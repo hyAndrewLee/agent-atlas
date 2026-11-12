@@ -1,7 +1,7 @@
 import { relative, resolve } from "node:path";
-import { realpathSync, statSync } from "node:fs";
-import { contains, context, fail, safePath, select, type Scope, type Snapshot } from "./engine.ts";
-import { check, load, refresh } from "./store.ts";
+import { lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { contains, context, fail, IGNORED, safePath, select, type Scope, type Snapshot } from "./engine.ts";
+import { check, refresh } from "./store.ts";
 
 export class AtlasSession {
   scope: Scope | undefined;
@@ -62,11 +62,17 @@ export class AtlasSession {
     try {
       const raw = input.path ?? (readonly ? "." : undefined);
       if (typeof raw !== "string") fail("Tool needs a path");
-      const abs = resolve(cwd, raw.startsWith("@") ? raw.slice(1) : raw);
+      const spelling = raw.startsWith("@") ? raw.slice(1) : raw;
+      if (spelling === "~" || spelling.startsWith("~/") || spelling.startsWith("file:") || /[\u00a0\u2000-\u200a\u202f\u205f\u3000]/.test(spelling)) fail("Use an exact repository path, not home/file-URL/Unicode-space aliases");
+      const abs = resolve(cwd, spelling);
       if (!contains(this.root, abs)) fail("Tool path escapes Atlas repository");
       const p = relative(this.root, abs).split("\\").join("/") || ".";
       safePath(this.root, p);
-      if (mutation && [".agent-atlas", ".pi", ".git", ".agent-atlas.lock", "node_modules"].some(d => contains(d, p))) fail("Atlas/runtime/dependency metadata is protected; user must resolve it explicitly");
+      // Pi's native read has filename-spelling fallbacks. Require an existing
+      // exact spelling so an unchecked fallback cannot resolve a different path.
+      if (toolName === "read") { try { statSync(abs); } catch { fail("Read needs an exact existing path; filename-spelling fallbacks are not supported"); } }
+      input.path = abs; // Align the checked path with what Pi actually executes.
+      if (mutation && p.split("/").some(part => IGNORED.includes(part))) fail("Atlas/runtime/dependency metadata is protected; user must resolve it explicitly");
       if (readonly && contains(".agent-atlas", p)) return; // Diagnostics, rules, skill and immutable snapshots.
       if (!this.scope || this.problem) return;
       const s = this.snapshot!;
@@ -77,6 +83,15 @@ export class AtlasSession {
       if (directory) {
         const descendants = s.files.filter(f => contains(p, f.path));
         if (!descendants.length || descendants.some(f => !selected.has(f.path))) fail("Search directory exceeds selected Atlas context; use a narrower path or explicitly widen scope");
+        const checkTree = (dir: string) => {
+          for (const name of readdirSync(dir)) {
+            if (IGNORED.includes(name)) fail("Search directory contains reserved/unindexed areas; target a narrower directory or file");
+            const child = resolve(dir, name), stat = lstatSync(child);
+            if (stat.isSymbolicLink()) fail("Search directory contains a symlink; use exact safe file paths");
+            if (stat.isDirectory()) checkTree(child);
+          }
+        };
+        checkTree(abs);
       } else if (!selected.has(p)) {
         // New files are allowed only in explicitly selected domains, never guessed seed neighborhoods.
         const matches = s.domains.filter(d => d.paths.some(base => contains(base, p)));

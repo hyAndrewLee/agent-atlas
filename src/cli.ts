@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { readFileSync, realpathSync } from "node:fs";
-import { build, context, inventory, json, propose, safePath } from "./engine.ts";
+import { AtlasError, build, context, inventory, json, propose, safePath } from "./engine.ts";
 import { init } from "./install.ts";
 import { check, installed, load, refresh } from "./store.ts";
 
@@ -33,5 +33,5 @@ export async function main(argv = process.argv.slice(2)) {
   return context(build(a.root, input ?? propose(inventory(a.root))), a.scope);
 }
 if (import.meta.main) {
-  main().then(output => console.log(output)).catch(e => { console.error(String(e.message ?? e)); process.exitCode = 1; });
+  main().then(output => console.log(output)).catch(e => { (e instanceof AtlasError ? console.log : console.error)(String(e.message ?? e)); process.exitCode = 1; });
 }

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, readFileSync, symlinkSync } from "node:fs";
+import { readFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { init, runtimeBundle } from "../src/install.ts";
 import { check, load, lock, refresh, RULES, SKILL, EXTENSION } from "../src/store.ts";
@@ -73,6 +73,9 @@ test("installation refuses symlink destination ancestors without following them"
 });
 test("installed bundle runs in plain Node with no dependencies in consuming repository", async () => {
   const root = fixture(files); await init(root, r, { bundle });
+  expect(bundle).toContain("Third-party TypeScript parser");
+  expect(bundle).toContain("END OF TERMS AND CONDITIONS");
+  expect(readFileSync(join(root, EXTENSION), "utf8")).toStartWith("// @ts-nocheck");
   const script = `import atlas from ${JSON.stringify(join(root, ".agent-atlas/runtime.mjs"))}; const handlers={}; atlas({on(n,f){handlers[n]=f},registerCommand(){},sendMessage(){}}, ${JSON.stringify(root)}); const r=handlers.before_agent_start({}, {cwd:${JSON.stringify(root)}}); if(!r.message.content.includes('Domain map')) process.exit(2); console.log('adapter loaded');`;
   const p = Bun.spawn(["node", "--input-type=module", "-e", script], { stdout: "pipe", stderr: "pipe" });
   const stderr = await new Response(p.stderr).text(); expect(stderr).toBe("");

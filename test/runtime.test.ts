@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { readFileSync } from "node:fs";
 import { init } from "../src/install.ts";
 import atlas from "../src/pi.ts";
 import { AtlasSession } from "../src/runtime.ts";
@@ -24,7 +23,13 @@ test("runtime requires explicit scope; native reads/searches/edits respect it, w
   expect(session.gate("grep", { path: "app", pattern: "x" }, root)).toBeUndefined();
   expect(session.gate("write", { path: "app/new.ts" }, root)).toBeUndefined();
   expect(session.gate("read", { path: "../outside" }, root)).toContain("escapes");
+  expect(session.gate("read", { path: "~/outside" }, root)).toContain("exact repository path");
+  expect(session.gate("read", { path: "file:///etc/passwd" }, root)).toContain("exact repository path");
+  expect(session.gate("read", { path: "app/missing.ts" }, root)).toContain("exact existing path");
+  const nativeInput: Record<string, unknown> = { path: "@app/a.ts" };
+  expect(session.gate("read", nativeInput, root)).toBeUndefined(); expect(nativeInput.path).toBe(join(root, "app/a.ts"));
   expect(session.gate("write", { path: ".agent-atlas/rules.json" }, root)).toContain("protected");
+  expect(session.gate("write", { path: "app/node_modules/new.ts" }, root)).toContain("protected");
   expect(() => session.command("domain other")).toThrow("expansion needs");
   expect(() => session.command("widen domain other")).toThrow("Usage");
   expect(session.command("widen domain other --reason imported contract")).toContain("imported contract");

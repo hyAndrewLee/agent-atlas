@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync, lstatSync, realpathSync } from "node:fs";
-import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { build, fail, hash, inventory, inventoryHash, json, safePath, type Rules, type Snapshot } from "./engine.ts";
+import { build, fail, hash, inventory, inventoryHash, json, parseRules, safePath, type Rules, type Snapshot } from "./engine.ts";
 
 export const EXTENSION = ".pi/extensions/agent-atlas.ts";
 export const SKILL = ".agent-atlas/skill/SKILL.md";
@@ -23,7 +22,11 @@ export function load(root: string): { current: Current; rules: Rules; snapshot: 
   return { current, rules: JSON.parse(rulesText), snapshot, rulesText };
 }
 export function check(root: string) {
-  const state = load(root), next = build(root, state.rules, state.snapshot);
+  const state = load(root);
+  // ponytail: full content hashing, but do not reparse unchanged trees. Incremental
+  // inventories are a later optimization only after representative measurements.
+  if (inventoryHash(inventory(root)) === state.snapshot.inputHash && hash(json(parseRules(state.rules))) === state.snapshot.rulesHash) return { ...state, next: state.snapshot, fresh: true };
+  const next = build(root, state.rules, state.snapshot);
   return { ...state, next, fresh: json(next) === json(state.snapshot) };
 }
 export function lock<T>(root: string, fn: () => T): T {
@@ -61,6 +64,7 @@ export function refresh(root: string, beforePublish?: () => void): { changed: bo
       else { writeFileSync(safePath(root, snapshotPath), bytes, { flag: "wx" }); created = true; }
       writeFileSync(safePath(root, pointerTemp), json({ ...state.current, snapshot: digest }), { flag: "wx" });
       assertFresh(root, state.next, state.rulesText);
+      if (json(load(root).current) !== json(state.current)) fail("Atlas ownership pointer changed before publication; retry");
       renameSync(safePath(root, pointerTemp), safePath(root, ".agent-atlas/current.json"));
     } catch (e) {
       if (created) rmSync(safePath(root, snapshotPath));

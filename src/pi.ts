@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { realpathSync } from "node:fs";
 import { AtlasSession } from "./runtime.ts";
 import { check, SKILL } from "./store.ts";

@@ -2,9 +2,12 @@ import { afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, readFileSync, lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { spawnSync } from "node:child_process";
 const roots: string[] = [];
 export function fixture(files: Record<string, string>) {
   const root = mkdtempSync(join(tmpdir(), "atlas-test-")); roots.push(root);
+  const git = spawnSync("git", ["init", "--quiet", "--initial-branch=main", root]);
+  if (git.status !== 0) throw new Error(`Cannot create Git fixture: ${git.stderr}`);
   for (const [p, text] of Object.entries(files)) put(root, p, text);
   return root;
 }

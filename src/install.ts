@@ -1,9 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { build, fail, hash, inventory, inventoryHash, json, parseRules, propose, safePath, type Rules } from "./engine.ts";
-import { check, EXTENSION, installed, load, lock, read, RULES, RUNTIME, SKILL, type Current } from "./store.ts";
+import { check, EXTENSION, installed, lock, read, RUNTIME, SKILL, type Current } from "./store.ts";
 
-export const stub = `// Agent Atlas generated entry. Do not edit; ownership is verified on refresh.\nimport atlas from "../../.agent-atlas/runtime.mjs";\nimport { fileURLToPath } from "node:url";\nexport default function(pi) { return atlas(pi, fileURLToPath(new URL("../../", import.meta.url))); }\n`;
+export const stub = `// @ts-nocheck -- generated bridge needs no target-side host typings.\n// Agent Atlas generated entry. Do not edit; ownership is verified on refresh.\nimport atlas from "../../.agent-atlas/runtime.mjs";\nimport { fileURLToPath } from "node:url";\nexport default function(pi) { return atlas(pi, fileURLToPath(new URL("../../", import.meta.url))); }\n`;
 export const skill = `---
 name: agent-atlas
 description: Navigate this repository using explicit domain ownership and static JS/TS dependency adjacency. Use before exploring or changing repository code.
@@ -26,13 +26,20 @@ Never run repository tests, builds, configs, scripts or manual commands automati
 final validation commands remain the user's decision.
 `;
 export async function runtimeBundle(): Promise<string> {
-  const result = await Bun.build({ entrypoints: [join(import.meta.dir, "pi.ts")], target: "node", format: "esm", minify: true });
+  const result = await Bun.build({ entrypoints: [join(import.meta.dir, "pi.ts")], target: "node", format: "esm", minify: true, tsconfig: join(import.meta.dir, "../tsconfig.json") });
   if (!result.success || result.outputs.length !== 1) fail(`Cannot build self-contained Pi adapter: ${result.logs.join("\n")}`);
-  return result.outputs[0]!.text();
+  const dependencyRoot = dirname(Bun.resolveSync("typescript/package.json", import.meta.dir));
+  const notices = ["LICENSE.txt", "ThirdPartyNoticeText.txt"].map(file => readFileSync(join(dependencyRoot, file), "utf8")).join("\n\n");
+  const header = "// Third-party TypeScript parser, bundled/minified from the pinned dependency.\n// The following notices apply to that dependency, not to Agent Atlas.\n" + notices.split(/\r?\n|\u2028|\u2029/).map(line => "// " + line).join("\n") + "\n";
+  return header + await result.outputs[0]!.text();
 }
 export async function init(root: string, input?: unknown, options: { beforePublish?: () => void; afterExtension?: () => void; bundle?: string } = {}) {
   if (installed(root)) {
+    if (!existsSync(safePath(root, ".agent-atlas/current.json"))) fail("Existing unowned .agent-atlas area; nothing overwritten. Choose a different location or resolve it manually.");
     const state = check(root);
+    for (const file of readdirSync(safePath(root, ".agent-atlas/snapshots"))) {
+      if (!/^[a-f0-9]{64}\.json$/.test(file) || hash(read(root, `.agent-atlas/snapshots/${file}`)) !== file.slice(0, -5)) fail(`Edited generated snapshot conflict: ${file}`);
+    }
     if (input && json(parseRules(input)) !== json(state.rules)) fail("Already installed: edit human-owned .agent-atlas/rules.json explicitly, then refresh. init never replaces rules.");
     if (!state.fresh) fail("Already installed but stale; use refresh. init never silently changes an existing installation.");
     return { changed: false, snapshot: state.snapshot };
@@ -42,7 +49,7 @@ export async function init(root: string, input?: unknown, options: { beforePubli
   const bundle = options.bundle ?? await runtimeBundle();
   return lock(root, () => {
     if (installed(root)) fail("Installation appeared concurrently; retry init");
-    for (const p of [EXTENSION, ".pi/extensions/agent-atlas", ".pi/skills/agent-atlas", ".agents/skills/agent-atlas"]) if (existsSync(safePath(root, p))) fail(`Existing user file/directory conflict: ${p}. Nothing overwritten.`);
+    for (const p of [EXTENSION, ".pi/extensions/agent-atlas.js", ".pi/extensions/agent-atlas", ".pi/skills/agent-atlas", ".agents/skills/agent-atlas"]) if (existsSync(safePath(root, p))) fail(`Existing user file/directory conflict: ${p}. Nothing overwritten.`);
     // Preflight all ancestors before creating anything outside our temporary lock directory.
     safePath(root, EXTENSION);
     const stage = safePath(root, ".agent-atlas.lock/stage");
@@ -65,6 +72,7 @@ export async function init(root: string, input?: unknown, options: { beforePubli
       options.afterExtension?.();
       if (inventoryHash(inventory(root)) !== snapshot.inputHash) fail("Sources changed while installing; retry");
       // Activation is last. Refreshes later publish by one atomic pointer replacement.
+      if (existsSync(safePath(root, ".agent-atlas"))) fail("An .agent-atlas area appeared concurrently; nothing overwritten");
       renameSync(stage, safePath(root, ".agent-atlas"));
     } catch (e) {
       if (wroteExtension && read(root, EXTENSION) === stub) rmSync(safePath(root, EXTENSION));

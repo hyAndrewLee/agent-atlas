@@ -50,7 +50,7 @@ export function parseRules(input: unknown): Rules {
   if (r.autoPackages !== undefined && !Array.isArray(r.autoPackages)) fail("autoPackages must be an array");
   const autos: string[] = [];
   for (const a of r.autoPackages ?? []) {
-    if (!a || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/.test(a.prefix) || Object.keys(a).some(k => !["under", "prefix"].includes(k))) fail("Invalid autoPackages rule");
+    if (!a || typeof a.prefix !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/.test(a.prefix) || Object.keys(a).some(k => !["under", "prefix"].includes(k))) fail("Invalid autoPackages rule");
     cleanPath(a.under, false);
     for (const p of [...paths, ...autos]) if (contains(p, a.under) || contains(a.under, p)) fail(`Overlapping package-creation rule: ${a.under} and ${p}`);
     autos.push(a.under);
@@ -74,10 +74,10 @@ export function inventory(root: string): Map<string, Buffer> {
     }
   };
   walk(".");
-  return files;
+  return new Map([...files].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
 }
 export const inventoryHash = (files: Map<string, Buffer>) => hash(json([...files].map(([p, b]) => [p, hash(b)])));
-const sourcePattern = /\.(?:[cm]?[jt]sx?)$/;
+const sourcePattern = /\.(?:[jt]sx?|[cm][jt]s)$/;
 const unsupportedLanguage = /\.(?:py|rs|go|java|kt|c|h|cpp|cs|rb|php|swift|vue|svelte|astro|sh|sql|lua|ex|exs|scala|clj|dart|m|mm|ipynb)$/;
 export function propose(files: Map<string, Buffer>): Rules {
   const packages = [...files.keys()].filter(p => p === "package.json" || p.endsWith("/package.json"));
@@ -100,26 +100,39 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
       }
     }
   }
-  domains.sort((a, b) => a.name.localeCompare(b.name, "en"));
+  domains.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   const issues: string[] = [], coverage: string[] = [];
   const files = [...data].map(([path, bytes]) => {
     const matches = domains.filter(d => d.paths.some(p => contains(p, path)));
     const excluded = rules.exclude.some(p => contains(p, path));
     if (matches.length + Number(excluded) !== 1) issues.push(`Unassigned or conflicting path: ${path}. Declare a domain path or explicit exclusion.`);
-    if (!excluded && unsupportedLanguage.test(path)) coverage.push(`Unsupported language (inventory only): ${path}`);
+    if (!excluded && !sourcePattern.test(path)) coverage.push(`${unsupportedLanguage.test(path) ? "Unsupported language (inventory only)" : "Inventory only (no dependency extraction)"}: ${path}`);
     return { path, domain: excluded ? null : matches[0]?.name ?? null, hash: hash(bytes) };
   });
   for (const p of packages) {
     const dir = posix.dirname(p);
-    if (previous && !previous.packages.includes(p) && !domains.some(d => d.paths.includes(dir))) issues.push(`New package boundary requires an explicit domain or preapproved autoPackages rule: ${p}`);
+    if (previous && !rules.exclude.some(base => contains(base, p)) && !previous.packages.includes(p) && !domains.some(d => d.paths.includes(dir))) issues.push(`New package boundary requires an explicit domain or preapproved autoPackages rule: ${p}`);
   }
   const nodes = files.filter(f => f.domain !== null && sourcePattern.test(f.path)).map(f => f.path);
+  const nodeSet = new Set(nodes);
   const adjacency: Record<string, string[]> = Object.create(null), external: Snapshot["external"] = [];
   const configs = new Map<string, ts.CompilerOptions>();
-  for (const [p, bytes] of data) if (posix.basename(p) === "tsconfig.json" || posix.basename(p) === "jsconfig.json") {
-    const parsed = ts.parseConfigFileTextToJson(p, bytes.toString());
+  const usedConfigs = new Set<string>();
+  for (const p of nodes) {
+    let dir = posix.dirname(p);
+    while (true) {
+      const prefix = dir === "." ? "" : dir + "/";
+      const candidate = [prefix + "tsconfig.json", prefix + "jsconfig.json"].find(c => data.has(c));
+      if (candidate) { usedConfigs.add(candidate); break; }
+      if (dir === ".") break;
+      dir = posix.dirname(dir);
+    }
+  }
+  for (const p of [...usedConfigs].sort()) {
+    const parsed = ts.parseConfigFileTextToJson(p, data.get(p)!.toString());
     if (parsed.error) { issues.push(`Invalid config: ${p}`); continue; }
     const config = parsed.config;
+    if (!config || typeof config !== "object" || Array.isArray(config)) { issues.push(`Invalid config object: ${p}`); continue; }
     if (config.extends || config.references) { issues.push(`Unsupported config extends/references: ${p}. v1 requires self-contained compilerOptions.`); continue; }
     const dir = posix.dirname(p), opts = config.compilerOptions ?? {};
     if (opts.moduleSuffixes || opts.rootDirs || opts.customConditions) issues.push(`Unsupported resolver options in ${p}: moduleSuffixes/rootDirs/customConditions`);
@@ -148,7 +161,7 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
   };
   const localPackages = packages.flatMap(p => {
     try { const name = JSON.parse(data.get(p)!.toString()).name; return typeof name === "string" ? [name] : []; }
-    catch { issues.push(`Invalid package.json: ${p}`); return []; }
+    catch { if (!rules.exclude.some(base => contains(base, p))) issues.push(`Invalid package.json: ${p}`); return []; }
   });
   for (const p of nodes) {
     adjacency[p] = [];
@@ -163,17 +176,19 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
       if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) imports.push(node.moduleSpecifier.text);
       if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference) && node.moduleReference.expression && ts.isStringLiteral(node.moduleReference.expression)) imports.push(node.moduleReference.expression.text);
       if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) imports.push(node.argument.literal.text);
+      if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword) coverage.push(`Unindexed import.meta usage: ${p}:${source.getLineAndCharacterOfPosition(node.getStart()).line + 1}`);
       if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === "require"))) coverage.push(`Unindexed ${node.expression.kind === ts.SyntaxKind.ImportKeyword ? "dynamic import" : "require call"}: ${p}:${source.getLineAndCharacterOfPosition(node.getStart()).line + 1}`);
       ts.forEachChild(node, visit);
     };
     visit(source);
+    if (source.referencedFiles.length || source.typeReferenceDirectives.length || source.libReferenceDirectives.length) coverage.push(`Unindexed triple-slash references: ${p}`);
     for (const specifier of [...new Set(imports)].sort()) {
       const alias = Object.keys(options.paths ?? {}).some(k => k.includes("*") ? specifier.startsWith(k.split("*")[0]!) && specifier.endsWith(k.split("*")[1]!) : k === specifier);
-      const isLocal = specifier.startsWith(".") || specifier.startsWith("/") || alias || localPackages.some(n => specifier === n || specifier.startsWith(n + "/"));
+      const isLocal = specifier.startsWith(".") || specifier.startsWith("/") || specifier.startsWith("#") || alias || localPackages.some(n => specifier === n || specifier.startsWith(n + "/"));
       const result = ts.resolveModuleName(specifier, resolve(root, p), options, host).resolvedModule;
       if (result) {
         const target = toRel(result.resolvedFileName);
-        if (!nodes.includes(target)) issues.push(`Local import targets excluded/unsupported file: ${p} -> ${specifier} (${target})`);
+        if (!nodeSet.has(target)) issues.push(`Local import targets excluded/unsupported file: ${p} -> ${specifier} (${target})`);
         else adjacency[p]!.push(target);
       } else if (isLocal) issues.push(`Unresolved local import: ${p} -> ${specifier}`);
       else external.push({ from: p, specifier });
@@ -198,7 +213,8 @@ export function select(snapshot: Snapshot, scope: Scope): Set<string> {
 }
 export function context(snapshot: Snapshot, scope: Scope, limit = 12000): string {
   const selected = select(snapshot, scope);
-  const lines = ["Agent Atlas — explicit scope; navigation aid, NOT a security sandbox.", `Source hash: ${snapshot.inputHash}`, "Domain map:", ...snapshot.domains.map(d => `${d.name}: ${d.paths.join(", ")}`), "Scope files and outgoing adjacency:", ...[...selected].sort().map(p => `${p} -> ${(snapshot.adjacency[p] ?? []).join(", ") || "(none)"}`), `Coverage: ${snapshot.coverage.length} unindexed constructs/languages; ${snapshot.external.length} external package imports.`, ...snapshot.coverage];
+  const incoming = Object.entries(snapshot.adjacency).filter(([p, targets]) => !selected.has(p) && targets.some(t => selected.has(t))).map(([p, targets]) => `${p} -> ${targets.filter(t => selected.has(t)).join(", ")}`);
+  const lines = ["Agent Atlas — explicit scope; navigation aid, NOT a security sandbox.", `Source hash: ${snapshot.inputHash}`, "Domain map:", ...snapshot.domains.map(d => `${d.name}: ${d.paths.join(", ")}`), "Scope files and outgoing adjacency:", ...[...selected].sort().map(p => `${p} -> ${(snapshot.adjacency[p] ?? []).join(", ") || "(none)"}`), "Incoming boundary edges (not automatically selected):", ...incoming, `Coverage: ${snapshot.coverage.length} inventory-only files/unindexed constructs; ${snapshot.external.length} nonlocal imports (not verified).`, ...snapshot.coverage];
   const output = lines.join("\n");
   return output.length <= limit ? output : output.slice(0, limit - 100) + "\n[Context truncated; use CLI context/query with narrower seeds. Enforcement retains full selection.]";
 }
