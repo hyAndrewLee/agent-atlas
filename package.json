@@ -1,0 +1,12 @@
+{
+  "name": "agent-atlas",
+  "version": "0.1.0",
+  "description": "Explicit-domain repository navigation and dependency context for Pi",
+  "type": "module",
+  "bin": { "agent-atlas": "src/cli.ts" },
+  "files": ["src", "README.md"],
+  "scripts": { "test": "bun test", "typecheck": "tsc --noEmit" },
+  "dependencies": { "typescript": "5.9.3" },
+  "devDependencies": { "@types/bun": "1.3.2" },
+  "engines": { "bun": ">=1.2.23" }
+}
