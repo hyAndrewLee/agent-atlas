@@ -1,15 +1,8 @@
-import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { expect, test } from "bun:test";
+import { mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import { join } from "node:path";
+import { fixture } from "./helpers.ts";
 import { build, context, parseRules, propose, inventory, type Rules } from "../src/engine.ts";
-const roots: string[] = [];
-export function fixture(files: Record<string, string>) {
-  const root = mkdtempSync(join(tmpdir(), "atlas-test-")); roots.push(root);
-  for (const [p, text] of Object.entries(files)) { mkdirSync(dirname(join(root, p)), { recursive: true }); writeFileSync(join(root, p), text); }
-  return root;
-}
-afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
 const rules: Rules = { version: 1, domains: [{ name: "app", paths: ["."] }], exclude: [] };
 test("AST graph: static imports/exports, cycles, aliases, isolated nodes, JS extension substitution", () => {
   const root = fixture({ "package.json": '{"name":"fixture"}', "tsconfig.json": '{"compilerOptions":{"baseUrl":".","paths":{"@/*":["src/*"]}}}', "src/a.ts": 'import {b} from "@/b"; export {b};', "src/b.ts": 'export {a} from "./a.js"; export const b=1;', "alone.js": 'export const x=1;', "types.ts": 'type T = import("./src/b").X;' });
