@@ -5,14 +5,25 @@ import atlas from "../src/pi.ts";
 import { AtlasSession } from "../src/runtime.ts";
 import { load } from "../src/store.ts";
 import { fixture, put, tree } from "./helpers.ts";
-const rules = { version: 1, domains: [{ name: "app", paths: ["app"] }, { name: "other", paths: ["other"] }], exclude: [] };
+const rules = {
+  version: 1,
+  domains: [
+    { name: "app", paths: ["app"] },
+    { name: "other", paths: ["other"] },
+  ],
+  exclude: [],
+};
 async function setup() {
-  const root = fixture({ "app/a.ts": 'export {b} from "../other/b";', "other/b.ts": 'export const b=1;' });
+  const root = fixture({
+    "app/a.ts": 'export {b} from "../other/b";',
+    "other/b.ts": "export const b=1;",
+  });
   await init(root, rules);
   return root;
 }
 test("runtime requires explicit scope; native reads/searches/edits respect it, widening needs reason", async () => {
-  const root = await setup(), session = new AtlasSession(root);
+  const root = await setup(),
+    session = new AtlasSession(root);
   expect(session.prepare()).toContain("no task scope selected");
   expect(session.gate("read", { path: "other/b.ts" }, root)).toBeUndefined();
   expect(session.gate("bash", { command: "echo hello" }, root)).toContain("Select Atlas scope");
@@ -24,57 +35,115 @@ test("runtime requires explicit scope; native reads/searches/edits respect it, w
   expect(session.gate("write", { path: "app/new.ts" }, root)).toBeUndefined();
   expect(session.gate("read", { path: "../outside" }, root)).toContain("escapes");
   expect(session.gate("read", { path: "~/outside" }, root)).toContain("exact repository path");
-  expect(session.gate("read", { path: "file:///etc/passwd" }, root)).toContain("exact repository path");
+  expect(session.gate("read", { path: "file:///etc/passwd" }, root)).toContain(
+    "exact repository path",
+  );
   expect(session.gate("read", { path: "app/missing.ts" }, root)).toContain("exact existing path");
   const nativeInput: Record<string, unknown> = { path: "@app/a.ts" };
-  expect(session.gate("read", nativeInput, root)).toBeUndefined(); expect(nativeInput.path).toBe(join(root, "app/a.ts"));
+  expect(session.gate("read", nativeInput, root)).toBeUndefined();
+  expect(nativeInput.path).toBe(join(root, "app/a.ts"));
   expect(session.gate("write", { path: ".agent-atlas/rules.json" }, root)).toContain("protected");
   expect(session.gate("write", { path: "app/node_modules/new.ts" }, root)).toContain("protected");
   expect(() => session.command("domain other")).toThrow("expansion needs");
   expect(() => session.command("widen domain other")).toThrow("Usage");
-  expect(session.command("widen domain other --reason imported contract")).toContain("imported contract");
+  expect(session.command("widen domain other --reason imported contract")).toContain(
+    "imported contract",
+  );
   expect(session.gate("read", { path: "other/b.ts" }, root)).toBeUndefined();
   expect(session.gate("bash", { command: "anything" }, root)).toBeUndefined(); // Explicitly not a sandbox.
-  session.command("clear"); expect(session.command("seed app/a.ts")).toContain("other/b.ts");
+  session.command("clear");
+  expect(session.command("seed app/a.ts")).toContain("other/b.ts");
 });
 test("dirty successful edits refresh only at a deferred boundary; failed edits do not dirty", async () => {
-  const root = await setup(), session = new AtlasSession(root); session.prepare(); session.command("domain app");
-  session.result("edit", true); expect(session.dirty).toBe(false);
+  const root = await setup(),
+    session = new AtlasSession(root);
+  session.prepare();
+  session.command("domain app");
+  session.result("edit", true);
+  expect(session.dirty).toBe(false);
   const pointer = load(root).current.snapshot;
-  put(root, "app/a.ts", 'export {b} from "../other/b"; export const changed=true;'); session.result("edit", false);
-  expect(session.dirty).toBe(true); expect(load(root).current.snapshot).toBe(pointer);
-  expect(session.prepare()).toContain("Source hash:"); expect(session.dirty).toBe(false);
+  put(root, "app/a.ts", 'export {b} from "../other/b"; export const changed=true;');
+  session.result("edit", false);
+  expect(session.dirty).toBe(true);
+  expect(load(root).current.snapshot).toBe(pointer);
+  expect(session.prepare()).toContain("Source hash:");
+  expect(session.dirty).toBe(false);
   expect(load(root).current.snapshot).not.toBe(pointer);
-  put(root, "app/external.ts", "export {};" ); session.prepare(); expect(session.snapshot!.nodes).toContain("app/external.ts");
-  put(root, "unclear/new.ts", "export {};" ); const before = tree(root);
-  expect(session.prepare()).toContain("cannot update"); expect(session.gate("edit", { path: "app/a.ts" }, root)).toContain("requires user resolution");
+  put(root, "app/external.ts", "export {};");
+  session.prepare();
+  expect(session.snapshot!.nodes).toContain("app/external.ts");
+  put(root, "unclear/new.ts", "export {};");
+  const before = tree(root);
+  expect(session.prepare()).toContain("cannot update");
+  expect(session.gate("edit", { path: "app/a.ts" }, root)).toContain("requires user resolution");
   expect(session.gate("read", { path: ".agent-atlas/rules.json" }, root)).toBeUndefined();
-  expect(session.prepare()).toContain("do not retry automatically"); expect(tree(root)).toEqual(before);
+  expect(session.prepare()).toContain("do not retry automatically");
+  expect(tree(root)).toEqual(before);
 });
 test("adapter uses real Pi lifecycle contracts without continuations, duplicate context or provider calls", async () => {
-  const root = await setup(); const handlers = new Map<string, Function>(), commands = new Map<string, any>(), messages: any[] = [];
-  const session = atlas({ on(n, f) { handlers.set(n, f); }, registerCommand(n, x) { commands.set(n, x); }, sendMessage(m) { messages.push(m); } }, root);
+  const root = await setup();
+  const handlers = new Map<string, Function>(),
+    commands = new Map<string, any>(),
+    messages: any[] = [];
+  const session = atlas(
+    {
+      on(n, f) {
+        handlers.set(n, f);
+      },
+      registerCommand(n, x) {
+        commands.set(n, x);
+      },
+      sendMessage(m) {
+        messages.push(m);
+      },
+    },
+    root,
+  );
   const ctx = { cwd: root, hasUI: false };
   handlers.get("session_start")!({}, ctx);
   expect(handlers.get("resources_discover")!({}, ctx).skillPaths[0]).toContain("SKILL.md");
   expect(handlers.get("before_agent_start")!({}, ctx).message.content).toContain("Domain map");
-  commands.get("atlas").handler("domain app", ctx); expect(messages.length).toBe(1);
-  const r = handlers.get("context")!({ messages: [{ role: "user", content: "work" }, ...messages] }, ctx);
+  commands.get("atlas").handler("domain app", ctx);
+  expect(messages.length).toBe(1);
+  const r = handlers.get("context")!(
+    { messages: [{ role: "user", content: "work" }, ...messages] },
+    ctx,
+  );
   expect(r.messages.filter((m: any) => m.customType === "agent-atlas").length).toBe(1);
-  expect(r.messages[0].content).toBe("work"); expect(r.continue).toBeUndefined();
-  expect(handlers.get("tool_call")!({ toolName: "read", input: { path: "other/b.ts" } }, ctx).terminate).toBe(true);
+  expect(r.messages[0].content).toBe("work");
+  expect(r.continue).toBeUndefined();
+  expect(
+    handlers.get("tool_call")!({ toolName: "read", input: { path: "other/b.ts" } }, ctx).terminate,
+  ).toBe(true);
   put(root, "app/a.ts", "export const changed=1;");
-  expect(handlers.get("tool_call")!({ toolName: "edit", input: { path: "app/a.ts" } }, ctx).block).toBe(true);
+  expect(
+    handlers.get("tool_call")!({ toolName: "edit", input: { path: "app/a.ts" } }, ctx).block,
+  ).toBe(true);
   handlers.get("context")!({ messages: [] }, ctx);
-  expect(handlers.get("tool_call")!({ toolName: "edit", input: { path: "app/a.ts" } }, ctx)).toBeUndefined();
-  put(root, "app/a.ts", "export const changed=2;"); handlers.get("tool_result")!({ toolName: "edit", isError: false }, ctx);
-  expect(session.dirty).toBe(true); handlers.get("agent_settled")!({}, ctx); expect(session.dirty).toBe(false);
+  expect(
+    handlers.get("tool_call")!({ toolName: "edit", input: { path: "app/a.ts" } }, ctx),
+  ).toBeUndefined();
+  put(root, "app/a.ts", "export const changed=2;");
+  handlers.get("tool_result")!({ toolName: "edit", isError: false }, ctx);
+  expect(session.dirty).toBe(true);
+  handlers.get("agent_settled")!({}, ctx);
+  expect(session.dirty).toBe(false);
 });
 const host = process.env.ATLAS_PI_DIR;
-test.skipIf(!host)("generated entry loads through installed Pi jiti loader (no model/provider)", async () => {
-  const root = await setup();
-  const script = `import {loadExtensions} from ${JSON.stringify(join(host!, "dist/core/extensions/loader.js"))}; const r=await loadExtensions([${JSON.stringify(join(root, ".pi/extensions/agent-atlas.ts"))}], ${JSON.stringify(root)}); if(r.errors.length) throw new Error(JSON.stringify(r.errors)); const ext=r.extensions[0]; for(const event of ['context','tool_call','before_agent_start','resources_discover']) if(!ext.handlers.has(event)) throw new Error('missing '+event); console.log('Pi loaded');`;
-  const p = Bun.spawn(["node", "--input-type=module", "-e", script], { stdout: "pipe", stderr: "pipe" });
-  const out = await new Response(p.stdout).text(), err = await new Response(p.stderr).text();
-  expect(err).toBe(""); expect(await p.exited).toBe(0); expect(out).toContain("Pi loaded");
-}, 30000);
+test.skipIf(!host)(
+  "generated entry loads through installed Pi jiti loader (no model/provider)",
+  async () => {
+    const root = await setup();
+    const script = `import {loadExtensions} from ${JSON.stringify(join(host!, "dist/core/extensions/loader.js"))}; const r=await loadExtensions([${JSON.stringify(join(root, ".pi/extensions/agent-atlas.ts"))}], ${JSON.stringify(root)}); if(r.errors.length) throw new Error(JSON.stringify(r.errors)); const ext=r.extensions[0]; for(const event of ['context','tool_call','before_agent_start','resources_discover']) if(!ext.handlers.has(event)) throw new Error('missing '+event); console.log('Pi loaded');`;
+    const p = Bun.spawn(["node", "--input-type=module", "-e", script], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const out = await new Response(p.stdout).text(),
+      err = await new Response(p.stderr).text();
+    expect(err).toBe("");
+    expect(await p.exited).toBe(0);
+    expect(out).toContain("Pi loaded");
+  },
+  30000,
+);
