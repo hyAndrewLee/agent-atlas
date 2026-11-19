@@ -47,6 +47,7 @@ export function cleanPath(p: unknown, allowRoot = true): string {
 
   if ((!allowRoot && n === ".") || n !== p || p.endsWith("/"))
     fail(`Use normalized repository-relative paths: ${p}`);
+
   return n;
 }
 
@@ -144,6 +145,7 @@ export function inventory(root: string): Map<string, Buffer> {
     }
   };
   walk(".");
+
   return new Map([...files].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
@@ -203,6 +205,7 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
       coverage.push(
         `${unsupportedLanguage.test(path) ? "Unsupported language (inventory only)" : "Inventory only (no dependency extraction)"}: ${path}`,
       );
+
     return { path, domain: excluded ? null : (matches[0]?.name ?? null), hash: hash(bytes) };
   });
   for (const p of packages) {
@@ -330,10 +333,12 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
   const localPackages = packages.flatMap((p) => {
     try {
       const name = JSON.parse(data.get(p)!.toString()).name;
+
       return typeof name === "string" ? [name] : [];
     } catch {
       if (!rules.exclude.some((base) => contains(base, p)))
         issues.push(`Invalid package.json: ${p}`);
+
       return [];
     }
   });
@@ -491,6 +496,7 @@ export function context(snapshot: Snapshot, scope: Scope, limit = 12000): string
     ...snapshot.coverage,
   ];
   const output = lines.join("\n");
+
   return output.length <= limit
     ? output
     : output.slice(0, limit - 100) +

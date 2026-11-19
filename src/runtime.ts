@@ -39,12 +39,14 @@ export class AtlasSession {
       this.dirty = false;
       if (this.scope) return context(result.snapshot, this.scope);
       const map = result.snapshot.domains.map((d) => `${d.name}: ${d.paths.join(", ")}`).join("\n");
+
       return `Agent Atlas: no task scope selected. Read-only discovery only; ask the user for /atlas domain NAME or /atlas seed FILE. Never guess from task text.\nDomain map:\n${map}\nStatic JS/TS only; ${result.snapshot.coverage.length} coverage limitations. Shell/custom tools are not a security sandbox.`.slice(
         0,
         12000,
       );
     } catch (e: any) {
       this.problem = String(e.message ?? e);
+
       return `Agent Atlas cannot update navigation. Read-only diagnostics/discovery only; do not retry automatically in a loop. Ask the user to resolve rules/source/ownership, then /atlas refresh.\n${this.problem}`.slice(
         0,
         12000,
@@ -57,6 +59,7 @@ export class AtlasSession {
 
     if (action === ACTION.check) {
       if (kind) fail("Usage: /atlas check");
+
       return check(this.root).fresh
         ? "Atlas is fresh."
         : "Atlas is stale. /atlas refresh updates only unambiguous structure.";
@@ -64,11 +67,13 @@ export class AtlasSession {
 
     if (action === ACTION.refresh) {
       if (kind) fail("Usage: /atlas refresh");
+
       return this.prepare();
     }
 
     if (action === ACTION.clear) {
       this.scope = undefined;
+
       return "Atlas scope cleared; read-only discovery only.";
     }
 
