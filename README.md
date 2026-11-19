@@ -171,12 +171,21 @@ bunx --no-install agent-atlas check --root /absolute/path/to/target
 
 The archive includes the CLI/runtime source and declares TypeScript as a runtime dependency. Bun compiles the self-contained runtime at explicit `init` time; there are no lifecycle install scripts. The local tarball → Bun dependency installation → `bunx --no-install` → real target initialization path is exercised by the package smoke test. Publication and license selection remain owner decisions.
 
-## Tests
+## Local checks
 
 ```sh
-bun test
+bun install --frozen-lockfile
+bun run lint
+bun run format:check
 bun run typecheck
-# Optional actual Pi jiti-loader integration, no provider/model required:
+bun test
+```
+
+`bun run format` applies Oxfmt formatting to `src/` and `test/`; it does not fix lint findings. Fix lint findings separately and rerun the checks. The scripts do not touch generated artifacts, snapshots, or the lockfile.
+
+Optional actual Pi jiti-loader integration (no provider/model required):
+
+```sh
 ATLAS_PI_DIR=/absolute/path/to/node_modules/@earendil-works/pi-coding-agent bun test
 ```
 
