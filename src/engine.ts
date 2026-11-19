@@ -33,12 +33,14 @@ export class AtlasError extends Error {
 export function fail(message: string): never {
   throw new AtlasError([message]);
 }
+export const hasControlCharacter = (value: string) =>
+  [...value].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
 export function cleanPath(p: unknown, allowRoot = true): string {
   if (
     typeof p !== "string" ||
     !p ||
     p.includes("\\") ||
-    /[\x00-\x1f\x7f]/.test(p) ||
+    hasControlCharacter(p) ||
     isAbsolute(p) ||
     p.split("/").some((x) => x === ".." || x === "")
   )

@@ -2,7 +2,15 @@ import { expect, test } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fixture } from "./helpers.ts";
-import { build, context, parseRules, propose, inventory, type Rules } from "../src/engine.ts";
+import {
+  build,
+  cleanPath,
+  context,
+  parseRules,
+  propose,
+  inventory,
+  type Rules,
+} from "../src/engine.ts";
 const rules: Rules = { version: 1, domains: [{ name: "app", paths: ["."] }], exclude: [] };
 test("AST graph: static imports/exports, cycles, aliases, isolated nodes, JS extension substitution", () => {
   const root = fixture({
@@ -65,6 +73,9 @@ test("symlink, traversal and escaping resolver rejection", () => {
   expect(() => parseRules({ ...rules, domains: [{ name: "x", paths: ["../escape"] }] })).toThrow(
     "Unsafe",
   );
+  for (const character of ["\0", "\x1f", "\x7f"]) {
+    expect(() => cleanPath(`bad${character}path`)).toThrow("Unsafe");
+  }
   symlinkSync("/etc/passwd", join(root, "link"));
   expect(() => build(root, rules)).toThrow("Symlink");
   rmSync(join(root, "link"));

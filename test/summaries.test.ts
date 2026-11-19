@@ -163,6 +163,9 @@ test("check and no-op reject malformed persisted shape, coverage and evidence wi
       d.directories["src"].description = "";
     },
     (d: any) => {
+      d.directories["src"].description = "bad\x7fsummary";
+    },
+    (d: any) => {
       d.directories["src"].extra = true;
     },
     (d: any) => {

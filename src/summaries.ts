@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, posix, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import { cleanPath, hash, json, safePath } from "./engine.ts";
+import { cleanPath, hasControlCharacter, hash, json, safePath } from "./engine.ts";
 
 export const SUMMARIES = ".agent-atlas/directory-summaries.json";
 type Entry = { description: string; evidence: string[] };
@@ -115,7 +115,7 @@ function entry(value: unknown, dir: string, files: Record<string, string>): Entr
     typeof v.description !== "string" ||
     !v.description.trim() ||
     v.description.length > 500 ||
-    /[\x00-\x1f\x7f]/.test(v.description) ||
+    hasControlCharacter(v.description) ||
     !Array.isArray(v.evidence) ||
     !v.evidence.length ||
     v.evidence.length > 12
