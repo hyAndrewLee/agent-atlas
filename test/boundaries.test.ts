@@ -103,8 +103,8 @@ test("explicit exclusions do not invent domains or parse unrelated vendor config
   expect(load(root).snapshot.nodes).toEqual(["app/a.ts"]);
 });
 test("CLI ambiguity reports to stdout and leaves a real Git fixture byte-identical", async () => {
-  const root = fixture({ "src/a.ts": "export {};" }),
-    before = tree(root);
+  const root = fixture({ "src/a.ts": "export {};" });
+  const before = tree(root);
   const p = Bun.spawn(
     [process.execPath, join(import.meta.dir, "../src/cli.ts"), "init", "--root", root],
     { stdout: "pipe", stderr: "pipe" },

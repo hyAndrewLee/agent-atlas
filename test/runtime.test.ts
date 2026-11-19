@@ -22,8 +22,8 @@ async function setup() {
   return root;
 }
 test("runtime requires explicit scope; native reads/searches/edits respect it, widening needs reason", async () => {
-  const root = await setup(),
-    session = new AtlasSession(root);
+  const root = await setup();
+  const session = new AtlasSession(root);
   expect(session.prepare()).toContain("no task scope selected");
   expect(session.gate("read", { path: "other/b.ts" }, root)).toBeUndefined();
   expect(session.gate("bash", { command: "echo hello" }, root)).toContain("Select Atlas scope");
@@ -55,8 +55,8 @@ test("runtime requires explicit scope; native reads/searches/edits respect it, w
   expect(session.command("seed app/a.ts")).toContain("other/b.ts");
 });
 test("dirty successful edits refresh only at a deferred boundary; failed edits do not dirty", async () => {
-  const root = await setup(),
-    session = new AtlasSession(root);
+  const root = await setup();
+  const session = new AtlasSession(root);
   session.prepare();
   session.command("domain app");
   session.result("edit", true);
@@ -82,9 +82,9 @@ test("dirty successful edits refresh only at a deferred boundary; failed edits d
 });
 test("adapter uses real Pi lifecycle contracts without continuations, duplicate context or provider calls", async () => {
   const root = await setup();
-  const handlers = new Map<string, Function>(),
-    commands = new Map<string, any>(),
-    messages: any[] = [];
+  const handlers = new Map<string, Function>();
+  const commands = new Map<string, any>();
+  const messages: any[] = [];
   const session = atlas(
     {
       on(n, f) {
@@ -139,8 +139,8 @@ test.skipIf(!host)(
       stdout: "pipe",
       stderr: "pipe",
     });
-    const out = await new Response(p.stdout).text(),
-      err = await new Response(p.stderr).text();
+    const out = await new Response(p.stdout).text();
+    const err = await new Response(p.stderr).text();
     expect(err).toBe("");
     expect(await p.exited).toBe(0);
     expect(out).toContain("Pi loaded");

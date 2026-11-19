@@ -48,6 +48,7 @@ export function cleanPath(p: unknown, allowRoot = true): string {
     fail(`Use normalized repository-relative paths: ${p}`);
   return n;
 }
+
 export const contains = (base: string, p: string) =>
   base === "." || p === base || p.startsWith(base + "/");
 export function safePath(root: string, p: string): string {
@@ -63,6 +64,7 @@ export function safePath(root: string, p: string): string {
   }
   return resolve(root, p);
 }
+
 export function parseRules(input: unknown): Rules {
   const r = input as Rules;
   if (
@@ -115,6 +117,7 @@ export function parseRules(input: unknown): Rules {
   }
   return r;
 }
+
 export function inventory(root: string): Map<string, Buffer> {
   root = realpathSync(root);
   const files = new Map<string, Buffer>();
@@ -123,8 +126,8 @@ export function inventory(root: string): Map<string, Buffer> {
       if (IGNORED.includes(name)) continue;
       const p = dir === "." ? name : `${dir}/${name}`;
       cleanPath(p);
-      const absolute = safePath(root, p),
-        stat = lstatSync(absolute);
+      const absolute = safePath(root, p);
+      const stat = lstatSync(absolute);
       if (stat.isDirectory()) walk(p);
       else if (stat.isFile()) {
         if (stat.size > 8 * 1024 * 1024)
@@ -138,6 +141,7 @@ export function inventory(root: string): Map<string, Buffer> {
   walk(".");
   return new Map([...files].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
+
 export const inventoryHash = (files: Map<string, Buffer>) =>
   hash(json([...files].map(([p, b]) => [p, hash(b)])));
 const sourcePattern = /\.(?:[jt]sx?|[cm][jt]s)$/;
@@ -154,10 +158,11 @@ export function propose(files: Map<string, Buffer>): Rules {
       (packages.join(", ") || "none"),
   );
 }
+
 export function build(root: string, rulesInput: unknown, previous?: Snapshot): Snapshot {
   root = realpathSync(root);
-  const rules = parseRules(rulesInput),
-    data = inventory(root);
+  const rules = parseRules(rulesInput);
+  const data = inventory(root);
   const packages = [...data.keys()].filter(
     (p) => p === "package.json" || p.endsWith("/package.json"),
   );
@@ -176,8 +181,9 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
     }
   }
   domains.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  const issues: string[] = [],
-    coverage: string[] = [];
+  const issues: string[] = [];
+  const coverage: string[] = [];
+
   const files = [...data].map(([path, bytes]) => {
     const matches = domains.filter((d) => d.paths.some((p) => contains(p, path)));
     const excluded = rules.exclude.some((p) => contains(p, path));
@@ -207,10 +213,11 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
     .filter((f) => f.domain !== null && sourcePattern.test(f.path))
     .map((f) => f.path);
   const nodeSet = new Set(nodes);
-  const adjacency: Record<string, string[]> = Object.create(null),
-    external: Snapshot["external"] = [];
+  const adjacency: Record<string, string[]> = Object.create(null);
+  const external: Snapshot["external"] = [];
   const configs = new Map<string, ts.CompilerOptions>();
   const usedConfigs = new Set<string>();
+
   for (const p of nodes) {
     let dir = posix.dirname(p);
     while (true) {
@@ -226,6 +233,7 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
       dir = posix.dirname(dir);
     }
   }
+
   for (const p of [...usedConfigs].sort()) {
     const parsed = ts.parseConfigFileTextToJson(p, data.get(p)!.toString());
     if (parsed.error) {
@@ -243,8 +251,8 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
       );
       continue;
     }
-    const dir = posix.dirname(p),
-      opts = config.compilerOptions ?? {};
+    const dir = posix.dirname(p);
+    const opts = config.compilerOptions ?? {};
     if (opts.moduleSuffixes || opts.rootDirs || opts.customConditions)
       issues.push(`Unsupported resolver options in ${p}: moduleSuffixes/rootDirs/customConditions`);
     const base = opts.baseUrl ?? ".";
@@ -317,8 +325,8 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
   });
   for (const p of nodes) {
     adjacency[p] = [];
-    let dir = posix.dirname(p),
-      options: ts.CompilerOptions | undefined;
+    let dir = posix.dirname(p);
+    let options: ts.CompilerOptions | undefined;
     while (true) {
       if (configs.has(dir)) {
         options = configs.get(dir);
@@ -412,6 +420,7 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
     adjacency[p] = [...new Set(adjacency[p])].sort();
   }
   if (issues.length) throw new AtlasError(issues.sort());
+
   return {
     version: 1,
     inputHash: inventoryHash(data),
@@ -425,6 +434,7 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
     coverage: [...new Set(coverage)].sort(),
   };
 }
+
 export type Scope = { domains?: string[]; seeds?: string[] };
 export function select(snapshot: Snapshot, scope: Scope): Set<string> {
   if (!scope.domains?.length && !scope.seeds?.length)
@@ -444,6 +454,7 @@ export function select(snapshot: Snapshot, scope: Scope): Set<string> {
   }
   return selected;
 }
+
 export function context(snapshot: Snapshot, scope: Scope, limit = 12000): string {
   const selected = select(snapshot, scope);
   const incoming = Object.entries(snapshot.adjacency)

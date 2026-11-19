@@ -55,6 +55,7 @@ export async function runtimeBundle(): Promise<string> {
   });
   if (!result.success || result.outputs.length !== 1)
     fail(`Cannot build self-contained Pi adapter: ${result.logs.join("\n")}`);
+
   const dependencyRoot = dirname(Bun.resolveSync("typescript/package.json", import.meta.dir));
   const notices = ["LICENSE.txt", "ThirdPartyNoticeText.txt"]
     .map((file) => readFileSync(join(dependencyRoot, file), "utf8"))
@@ -68,6 +69,7 @@ export async function runtimeBundle(): Promise<string> {
     "\n";
   return header + (await result.outputs[0]!.text());
 }
+
 export async function init(
   root: string,
   input?: unknown,
@@ -96,6 +98,7 @@ export async function init(
       );
     return { changed: false, snapshot: state.snapshot };
   }
+
   const rules: Rules = input ? parseRules(input) : propose(inventory(root));
   const snapshot = build(root, rules);
   const bundle = options.bundle ?? (await runtimeBundle());
@@ -115,13 +118,14 @@ export async function init(
     const stage = safePath(root, ".agent-atlas.lock/stage");
     mkdirSync(join(stage, "snapshots"), { recursive: true });
     mkdirSync(join(stage, "skill"));
-    const snapshotBytes = json(snapshot),
-      digest = hash(snapshotBytes);
+    const snapshotBytes = json(snapshot);
+    const digest = hash(snapshotBytes);
     const current: Current = {
       version: 1,
       snapshot: digest,
       artifacts: { [EXTENSION]: hash(stub), [RUNTIME]: hash(bundle), [SKILL]: hash(skill) },
     };
+
     writeFileSync(join(stage, "rules.json"), json(rules), { flag: "wx" });
     writeFileSync(join(stage, "runtime.mjs"), bundle, { flag: "wx" });
     writeFileSync(join(stage, "skill/SKILL.md"), skill, { flag: "wx" });
@@ -130,6 +134,7 @@ export async function init(
     options.beforePublish?.();
     if (inventoryHash(inventory(root)) !== snapshot.inputHash)
       fail("Sources changed during install; retry. Nothing installed.");
+
     const madeDirs: string[] = [];
     let wroteExtension = false;
     try {

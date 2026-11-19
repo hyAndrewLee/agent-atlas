@@ -12,6 +12,16 @@ import {
 } from "./engine.ts";
 import { check, refresh } from "./store.ts";
 
+const ACTION = {
+  check: "check",
+  refresh: "refresh",
+  clear: "clear",
+  widen: "widen",
+  domain: "domain",
+  seed: "seed",
+} as const;
+const SCOPE_KINDS = [ACTION.domain, ACTION.seed];
+
 export class AtlasSession {
   scope: Scope | undefined;
   snapshot: Snapshot | undefined;
@@ -20,6 +30,7 @@ export class AtlasSession {
   constructor(public root: string) {
     this.root = realpathSync(root);
   }
+
   prepare(): string {
     try {
       const result = refresh(this.root);
@@ -40,28 +51,34 @@ export class AtlasSession {
       );
     }
   }
+
   command(text: string): string {
     const [action, kind, value, ...rest] = text.trim().split(/\s+/);
-    if (action === "check") {
+
+    if (action === ACTION.check) {
       if (kind) fail("Usage: /atlas check");
       return check(this.root).fresh
         ? "Atlas is fresh."
         : "Atlas is stale. /atlas refresh updates only unambiguous structure.";
     }
-    if (action === "refresh") {
+
+    if (action === ACTION.refresh) {
       if (kind) fail("Usage: /atlas refresh");
       return this.prepare();
     }
-    if (action === "clear") {
+
+    if (action === ACTION.clear) {
       this.scope = undefined;
       return "Atlas scope cleared; read-only discovery only.";
     }
-    let next: Scope,
-      reason = "";
-    if (action === "widen") {
+
+    let next: Scope;
+    let reason = "";
+
+    if (action === ACTION.widen) {
       if (
         !this.scope ||
-        !["domain", "seed"].includes(kind ?? "") ||
+        !SCOPE_KINDS.some((scopeKind) => scopeKind === kind) ||
         !value ||
         rest[0] !== "--reason" ||
         !rest.slice(1).join(" ").trim()
@@ -71,20 +88,22 @@ export class AtlasSession {
         );
       reason = rest.slice(1).join(" ");
       next = {
-        domains: [...(this.scope.domains ?? []), ...(kind === "domain" ? [value] : [])],
-        seeds: [...(this.scope.seeds ?? []), ...(kind === "seed" ? [value] : [])],
+        domains: [...(this.scope.domains ?? []), ...(kind === ACTION.domain ? [value] : [])],
+        seeds: [...(this.scope.seeds ?? []), ...(kind === ACTION.seed ? [value] : [])],
       };
     } else {
-      if (!["domain", "seed"].includes(action ?? "") || !kind || value)
+      if (!SCOPE_KINDS.some((scopeKind) => scopeKind === action) || !kind || value)
         fail(
           "Usage: /atlas domain NAME | seed FILE | widen domain NAME --reason REASON | check | refresh | clear",
         );
-      next = action === "domain" ? { domains: [kind] } : { seeds: [kind] };
+      next = action === ACTION.domain ? { domains: [kind] } : { seeds: [kind] };
     }
+
     const state = check(this.root);
+
     if (!state.fresh) fail("Atlas is stale; /atlas refresh before selecting scope");
     const nextFiles = select(state.snapshot, next);
-    if (this.scope && action !== "widen") {
+    if (this.scope && action !== ACTION.widen) {
       const oldFiles = select(state.snapshot, this.scope);
       if ([...nextFiles].some((p) => !oldFiles.has(p)))
         fail(
@@ -94,13 +113,16 @@ export class AtlasSession {
     this.scope = next;
     this.snapshot = state.snapshot;
     this.problem = undefined;
+
     return context(state.snapshot, next) + (reason ? `\nScope widened because: ${reason}` : "");
   }
+
   gate(toolName: string, input: Record<string, unknown>, cwd: string): string | undefined {
-    const reads = ["read", "grep", "find", "ls"],
-      writes = ["write", "edit"];
-    const readonly = reads.includes(toolName),
-      mutation = writes.includes(toolName);
+    const reads = ["read", "grep", "find", "ls"];
+    const writes = ["write", "edit"];
+    const readonly = reads.includes(toolName);
+    const mutation = writes.includes(toolName);
+
     if (!this.scope || this.problem) {
       if (!readonly)
         return this.problem
@@ -108,6 +130,7 @@ export class AtlasSession {
           : "Select Atlas scope with /atlas domain NAME or /atlas seed FILE first. Read-only discovery remains available.";
     }
     if (!readonly && !mutation) return; // Explicit limitation: no shell/custom-tool sandbox.
+
     try {
       const raw = input.path ?? (readonly ? "." : undefined);
       if (typeof raw !== "string") fail("Tool needs a path");
@@ -120,6 +143,7 @@ export class AtlasSession {
       )
         fail("Use an exact repository path, not home/file-URL/Unicode-space aliases");
       const abs = resolve(cwd, spelling);
+
       if (!contains(this.root, abs)) fail("Tool path escapes Atlas repository");
       const p = relative(this.root, abs).split("\\").join("/") || ".";
       safePath(this.root, p);
@@ -133,6 +157,7 @@ export class AtlasSession {
         }
       }
       input.path = abs; // Align the checked path with what Pi actually executes.
+
       if (mutation && p.split("/").some((part) => IGNORED.includes(part)))
         fail("Atlas/runtime/dependency metadata is protected; user must resolve it explicitly");
       if (readonly && contains(".agent-atlas", p)) return; // Diagnostics, rules, skill and immutable snapshots.
@@ -146,6 +171,7 @@ export class AtlasSession {
         if (e.code !== "ENOENT") throw e;
       }
       if (toolName === "ls") return; // Names-only discovery, not file content.
+
       if (directory) {
         const descendants = s.files.filter((f) => contains(p, f.path));
         if (!descendants.length || descendants.some((f) => !selected.has(f.path)))
@@ -158,8 +184,8 @@ export class AtlasSession {
               fail(
                 "Search directory contains reserved/unindexed areas; target a narrower directory or file",
               );
-            const child = resolve(dir, name),
-              stat = lstatSync(child);
+            const child = resolve(dir, name);
+            const stat = lstatSync(child);
             if (stat.isSymbolicLink())
               fail("Search directory contains a symlink; use exact safe file paths");
             if (stat.isDirectory()) checkTree(child);
@@ -176,6 +202,7 @@ export class AtlasSession {
       return String(e.message ?? e);
     }
   }
+
   result(toolName: string, isError: boolean) {
     if (!isError && !["read", "grep", "find", "ls"].includes(toolName)) this.dirty = true;
   }

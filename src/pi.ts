@@ -3,6 +3,8 @@ import { realpathSync } from "node:fs";
 import { AtlasSession } from "./runtime.ts";
 import { check, SKILL } from "./store.ts";
 
+const MESSAGE_TYPE = "agent-atlas";
+
 // Structural subset of the documented Pi ExtensionAPI. No host runtime import is
 // necessary: the installed ESM bundles the graph engine and its TypeScript parser.
 export interface PiAPI {
@@ -30,7 +32,7 @@ export default function atlas(pi: PiAPI, root: string) {
       }
       // This does not trigger a provider request, including headless/RPC mode.
       pi.sendMessage({
-        customType: "agent-atlas",
+        customType: MESSAGE_TYPE,
         content: content.slice(0, 12000),
         display: true,
       });
@@ -65,10 +67,10 @@ export default function atlas(pi: PiAPI, root: string) {
     // continuation requests, provider calls, subprocesses, timers or tool loops.
     return {
       messages: [
-        ...event.messages.filter((m: any) => m.customType !== "agent-atlas"),
+        ...event.messages.filter((m: any) => m.customType !== MESSAGE_TYPE),
         {
           role: "custom",
-          customType: "agent-atlas",
+          customType: MESSAGE_TYPE,
           content,
           display: false,
           timestamp: Date.now(),
