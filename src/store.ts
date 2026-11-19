@@ -41,6 +41,7 @@ export function load(root: string): {
   rulesText: string;
 } {
   const current = JSON.parse(read(root, ".agent-atlas/current.json")) as Current;
+
   if (
     current.version !== 1 ||
     !/^[a-f0-9]{64}$/.test(current.snapshot) ||
@@ -54,9 +55,11 @@ export function load(root: string): {
         `Edited generated artifact conflict: ${path}. Restore the original or remove the installation manually; nothing overwritten.`,
       );
   const bytes = read(root, `.agent-atlas/snapshots/${current.snapshot}.json`);
+
   if (hash(bytes) !== current.snapshot)
     fail("Edited generated snapshot conflict; restore original bytes");
   const snapshot = JSON.parse(bytes) as Snapshot;
+
   if (snapshot.version !== 1) fail("Unsupported snapshot version");
   const rulesText = read(root, RULES);
   return { current, rules: JSON.parse(rulesText), snapshot, rulesText };
@@ -110,16 +113,19 @@ export function refresh(
 ): { changed: boolean; snapshot: Snapshot } {
   // Validate before taking a writer lock: ordinary ambiguity is entirely read-only.
   const planned = check(root);
+
   if (planned.fresh) return { changed: false, snapshot: planned.snapshot };
 
   return lock(root, () => {
     const state = check(root);
+
     if (state.fresh) return { changed: false, snapshot: state.snapshot };
     beforePublish?.();
     assertFresh(root, state.next, state.rulesText);
 
     // Recheck ownership immediately before publishing, including externally edited artifacts.
     const again = load(root);
+
     if (json(again.current) !== json(state.current))
       fail("Atlas pointer changed during indexing; retry");
     const bytes = json(state.next);
@@ -147,6 +153,7 @@ export function refresh(
     } finally {
       rmSync(safePath(root, pointerTemp), { force: true });
     }
+
     return { changed: true, snapshot: state.next };
   });
 }

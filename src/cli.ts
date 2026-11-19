@@ -33,6 +33,7 @@ export function args(argv: string[]) {
   for (let i = 0; i < rest.length; i += 2) {
     const key = rest[i];
     const value = rest[i + 1];
+
     if (!value) throw new Error(`Missing value for ${key}`);
     if (key === OPTION.root) root = realpathSync(value);
     else if (key === OPTION.config) config = value;
@@ -71,7 +72,9 @@ export async function main(argv = process.argv.slice(2)) {
 
   if (a.command === COMMAND.check) {
     const r = check(a.root);
+
     if (!r.fresh) throw new Error("Atlas is stale; run refresh. No files written.");
+
     return `Fresh: ${r.snapshot.inputHash}\n${r.snapshot.coverage.join("\n")}`;
   }
 
@@ -84,6 +87,7 @@ export async function main(argv = process.argv.slice(2)) {
 
   if (installed(a.root)) {
     const r = check(a.root);
+
     if (!r.fresh)
       throw new Error("Atlas is stale; run refresh. Read-only context never refreshes implicitly.");
     return context(r.snapshot, a.scope);
