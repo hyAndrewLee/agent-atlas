@@ -13,11 +13,12 @@ const git = (root: string, args: string[]): Buffer => {
   return r.stdout as Buffer;
 };
 const split = (b: Buffer) => b.toString("utf8").split("\0").filter(Boolean);
+const excluded = (path: string) => path.split("/").some(part => [".agent-atlas", ".git", ".pi", "node_modules"].includes(part));
 function inventory(root: string) {
-  const files: Record<string, string> = {};
+  const files: Record<string, string> = Object.create(null);
   for (const path of split(git(root, ["ls-files", "--cached", "-z", "--full-name"])).sort()) {
     // Atlas output and installed navigation never enter summary inputs, even if tracked.
-    if (path === ".agent-atlas" || path.startsWith(".agent-atlas/") || path === ".git" || path.startsWith(".git/") || path === ".pi" || path.startsWith(".pi/") || path === "node_modules" || path.startsWith("node_modules/")) continue;
+    if (excluded(path)) continue;
     cleanPath(path, false);
     const location = resolve(root, path);
     if (!existsSync(location)) continue; // staged deletion
@@ -36,7 +37,8 @@ function directories(files: Record<string, string>) {
     let dir = posix.dirname(file);
     while (!dirs.has(dir)) { dirs.add(dir); dir = posix.dirname(dir); }
   }
-  return [...dirs].sort((a, b) => b.split("/").length - a.split("/").length || a.localeCompare(b));
+  const depth = (dir: string) => dir === "." ? 0 : dir.split("/").length;
+  return [...dirs].sort((a, b) => depth(b) - depth(a) || a.localeCompare(b));
 }
 function changedAgainst(root: string, target: string): Set<string> {
   const commit = git(root, ["rev-parse", "--verify", "--end-of-options", `${target}^{commit}`]).toString("utf8").trim();
@@ -62,10 +64,24 @@ function entry(value: unknown, dir: string, files: Record<string, string>): Entr
   if (Object.keys(v).sort().join() !== "description,evidence" || typeof v.description !== "string" || !v.description.trim() || v.description.length > 500 || /[\x00-\x1f\x7f]/.test(v.description) || !Array.isArray(v.evidence) || !v.evidence.length || v.evidence.length > 12) throw new Error(`Invalid summary: ${dir}`);
   for (const path of v.evidence) {
     cleanPath(path, false);
-    if (!files[path] || (dir !== "." && path !== dir && !path.startsWith(dir + "/"))) throw new Error(`Summary ${dir} cites missing/out-of-scope evidence: ${path}`);
+    if (!Object.hasOwn(files, path) || (dir !== "." && path !== dir && !path.startsWith(dir + "/"))) throw new Error(`Summary ${dir} cites missing/out-of-scope evidence: ${path}`);
   }
   if (new Set(v.evidence).size !== v.evidence.length) throw new Error(`Duplicate evidence: ${dir}`);
   return { description: v.description, evidence: v.evidence };
+}
+function validateDocument(value: unknown, model: string, reviewer: string): Document {
+  const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+  const invalid = () => { throw new Error("Incompatible directory summaries; keep prior output and explicitly remove it to rebuild"); };
+  if (!record(value) || Object.keys(value).sort().join() !== "directories,files,model,reviewer,source,version" || value.version !== 1 || value.source !== "git-tracked-working-tree" || value.model !== model || value.reviewer !== reviewer || !record(value.files) || !record(value.directories)) return invalid();
+  for (const [path, digest] of Object.entries(value.files)) {
+    cleanPath(path, false);
+    if (excluded(path) || typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)) invalid();
+  }
+  const prior = value as Document;
+  const expected = directories(prior.files).sort();
+  if (json(Object.keys(prior.directories).sort()) !== json(expected)) invalid();
+  for (const dir of expected) entry(prior.directories[dir], dir, prior.files);
+  return prior;
 }
 export function summaries(root: string, target: string, runner: string, model: string, reviewer: string, publish = false, beforePublish?: () => void) {
   root = realpathSync(root);
@@ -73,21 +89,20 @@ export function summaries(root: string, target: string, runner: string, model: s
   const output = safePath(root, SUMMARIES);
   const files = inventory(root), dirs = directories(files), changed = changedAgainst(root, target);
   const previousBytes = existsSync(output) ? readFileSync(output, "utf8") : undefined;
-  const previous = previousBytes ? JSON.parse(previousBytes) as Document : undefined;
-  if (previous && (previous.version !== 1 || previous.source !== "git-tracked-working-tree" || previous.model !== model || previous.reviewer !== reviewer || !previous.files || !previous.directories)) throw new Error("Incompatible directory summaries; keep prior output and explicitly remove it to rebuild");
+  const previous = previousBytes === undefined ? undefined : validateDocument(JSON.parse(previousBytes), model, reviewer);
   const touched = new Set<string>();
-  for (const path of new Set([...Object.keys(files), ...Object.keys(previous?.files ?? {}), ...changed])) {
-    if (files[path] !== previous?.files[path] || (changed.has(path) && (!previous || previous.files[path] !== files[path]))) touched.add(posix.dirname(path));
+  for (const path of new Set([...Object.keys(files), ...Object.keys(previous?.files ?? {})])) {
+    if (files[path] !== previous?.files[path]) touched.add(posix.dirname(path));
   }
   for (const dir of dirs) if (!previous?.directories[dir]) touched.add(dir);
-  // Revisit any summary citing changed evidence, and propagate changed child summaries to parents.
+  // Only changes since the prior inventory invalidate evidence, not an older target diff.
   const priorFiles = previous?.files ?? {};
-  for (const [dir, value] of Object.entries(previous?.directories ?? {})) if (value.evidence?.some(p => changed.has(p) || files[p] !== priorFiles[p])) touched.add(dir);
+  for (const [dir, value] of Object.entries(previous?.directories ?? {})) if (value.evidence.some(p => files[p] !== priorFiles[p])) touched.add(dir);
   const affected = new Set(touched);
   for (const dir of touched) { let parent = posix.dirname(dir); while (parent !== dir) { affected.add(parent); if (parent === ".") break; parent = posix.dirname(parent); } }
   if (!publish) return { fresh: !!previous && !affected.size && dirs.length === Object.keys(previous.directories).length, affected: [...affected].sort(), directories: dirs.length };
   if (previous && !affected.size && dirs.length === Object.keys(previous.directories).length) return { changed: false, directories: dirs.length };
-  const entries: Record<string, Entry> = {};
+  const entries: Record<string, Entry> = Object.create(null);
   for (const dir of dirs) {
     if (!affected.has(dir) && previous?.directories[dir]) { entries[dir] = entry(previous.directories[dir], dir, files); continue; }
     const direct = Object.keys(files).filter(p => posix.dirname(p) === dir);
