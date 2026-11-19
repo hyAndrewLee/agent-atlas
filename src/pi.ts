@@ -95,6 +95,7 @@ export default function atlas(pi: PiAPI, root: string) {
       session.problem = String(e.message ?? e);
     }
     const reason = session.gate(event.toolName, event.input, ctx.cwd);
+
     return reason ? { block: true, reason, terminate: true } : undefined;
   });
   pi.on("tool_result", (event) => {
@@ -103,5 +104,6 @@ export default function atlas(pi: PiAPI, root: string) {
   pi.on("agent_settled", () => {
     if (session.dirty) session.prepare();
   });
+
   return session;
 }

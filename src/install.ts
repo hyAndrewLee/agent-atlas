@@ -67,6 +67,7 @@ export async function runtimeBundle(): Promise<string> {
       .map((line) => "// " + line)
       .join("\n") +
     "\n";
+
   return header + (await result.outputs[0]!.text());
 }
 
@@ -96,12 +97,14 @@ export async function init(
       fail(
         "Already installed but stale; use refresh. init never silently changes an existing installation.",
       );
+
     return { changed: false, snapshot: state.snapshot };
   }
 
   const rules: Rules = input ? parseRules(input) : propose(inventory(root));
   const snapshot = build(root, rules);
   const bundle = options.bundle ?? (await runtimeBundle());
+
   return lock(root, () => {
     if (installed(root)) fail("Installation appeared concurrently; retry init");
     for (const p of [

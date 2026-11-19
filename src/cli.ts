@@ -62,11 +62,13 @@ export async function main(argv = process.argv.slice(2)) {
 
   if (a.command === COMMAND.init) {
     const r = await init(a.root, input);
+
     return `${r.changed ? "Installed" : "Already installed (unchanged)"}. ${r.snapshot.nodes.length} graph nodes. Start Pi at this root or /reload.\nCoverage:\n${r.snapshot.coverage.join("\n") || "No known unsupported constructs found; static JS/TS only."}`;
   }
 
   if (a.command === COMMAND.refresh) {
     const r = refresh(a.root);
+
     return `${r.changed ? "Refreshed" : "Already fresh"}. ${r.snapshot.nodes.length} nodes.\n${r.snapshot.coverage.join("\n")}`;
   }
 
@@ -80,6 +82,7 @@ export async function main(argv = process.argv.slice(2)) {
 
   if (a.command === COMMAND.scan) {
     const state = installed(a.root) ? load(a.root) : undefined;
+
     return json(
       build(a.root, input ?? state?.rules ?? propose(inventory(a.root)), state?.snapshot),
     );
@@ -90,6 +93,7 @@ export async function main(argv = process.argv.slice(2)) {
 
     if (!r.fresh)
       throw new Error("Atlas is stale; run refresh. Read-only context never refreshes implicitly.");
+
     return context(r.snapshot, a.scope);
   }
 

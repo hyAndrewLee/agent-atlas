@@ -62,6 +62,7 @@ export function load(root: string): {
 
   if (snapshot.version !== 1) fail("Unsupported snapshot version");
   const rulesText = read(root, RULES);
+
   return { current, rules: JSON.parse(rulesText), snapshot, rulesText };
 }
 
