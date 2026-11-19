@@ -163,6 +163,7 @@ export async function init(
       }
       throw e;
     }
+
     return { changed: true, snapshot };
   });
 }

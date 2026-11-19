@@ -44,6 +44,7 @@ export function cleanPath(p: unknown, allowRoot = true): string {
   )
     fail(`Unsafe repository path: ${String(p)}`);
   const n = posix.normalize(p);
+
   if ((!allowRoot && n === ".") || n !== p || p.endsWith("/"))
     fail(`Use normalized repository-relative paths: ${p}`);
   return n;
@@ -62,11 +63,13 @@ export function safePath(root: string, p: string): string {
       if (e.code !== "ENOENT") throw e;
     }
   }
+
   return resolve(root, p);
 }
 
 export function parseRules(input: unknown): Rules {
   const r = input as Rules;
+
   if (
     !r ||
     r.version !== 1 ||
@@ -115,6 +118,7 @@ export function parseRules(input: unknown): Rules {
         fail(`Overlapping package-creation rule: ${a.under} and ${p}`);
     autos.push(a.under);
   }
+
   return r;
 }
 
@@ -128,6 +132,7 @@ export function inventory(root: string): Map<string, Buffer> {
       cleanPath(p);
       const absolute = safePath(root, p);
       const stat = lstatSync(absolute);
+
       if (stat.isDirectory()) walk(p);
       else if (stat.isFile()) {
         if (stat.size > 8 * 1024 * 1024)
@@ -170,8 +175,10 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
   for (const a of rules.autoPackages ?? []) {
     for (const p of packages) {
       const dir = posix.dirname(p);
+
       if (posix.dirname(dir) === a.under) {
         const name = a.prefix + posix.basename(dir);
+
         if (domains.some((d) => d.name === name))
           fail(`Auto package domain name conflict: ${name}`);
         if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/.test(name))
@@ -187,6 +194,7 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
   const files = [...data].map(([path, bytes]) => {
     const matches = domains.filter((d) => d.paths.some((p) => contains(p, path)));
     const excluded = rules.exclude.some((p) => contains(p, path));
+
     if (matches.length + Number(excluded) !== 1)
       issues.push(
         `Unassigned or conflicting path: ${path}. Declare a domain path or explicit exclusion.`,
@@ -199,6 +207,7 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
   });
   for (const p of packages) {
     const dir = posix.dirname(p);
+
     if (
       previous &&
       !rules.exclude.some((base) => contains(base, p)) &&
@@ -236,11 +245,13 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
 
   for (const p of [...usedConfigs].sort()) {
     const parsed = ts.parseConfigFileTextToJson(p, data.get(p)!.toString());
+
     if (parsed.error) {
       issues.push(`Invalid config: ${p}`);
       continue;
     }
     const config = parsed.config;
+
     if (!config || typeof config !== "object" || Array.isArray(config)) {
       issues.push(`Invalid config object: ${p}`);
       continue;
@@ -253,14 +264,17 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
     }
     const dir = posix.dirname(p);
     const opts = config.compilerOptions ?? {};
+
     if (opts.moduleSuffixes || opts.rootDirs || opts.customConditions)
       issues.push(`Unsupported resolver options in ${p}: moduleSuffixes/rootDirs/customConditions`);
     const base = opts.baseUrl ?? ".";
+
     if (typeof base !== "string") {
       issues.push(`Invalid baseUrl: ${p}`);
       continue;
     }
     const baseAbs = resolve(root, dir, base);
+
     if (!contains(root, baseAbs)) {
       issues.push(`baseUrl escapes repository: ${p}`);
       continue;
@@ -409,6 +423,7 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
       ).resolvedModule;
       if (result) {
         const target = toRel(result.resolvedFileName);
+
         if (!nodeSet.has(target))
           issues.push(
             `Local import targets excluded/unsupported file: ${p} -> ${specifier} (${target})`,
@@ -452,6 +467,7 @@ export function select(snapshot: Snapshot, scope: Scope): Set<string> {
     for (const [source, targets] of Object.entries(snapshot.adjacency))
       if (targets.includes(seed)) selected.add(source);
   }
+
   return selected;
 }
 

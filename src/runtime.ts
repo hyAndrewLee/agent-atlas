@@ -103,8 +103,10 @@ export class AtlasSession {
 
     if (!state.fresh) fail("Atlas is stale; /atlas refresh before selecting scope");
     const nextFiles = select(state.snapshot, next);
+
     if (this.scope && action !== ACTION.widen) {
       const oldFiles = select(state.snapshot, this.scope);
+
       if ([...nextFiles].some((p) => !oldFiles.has(p)))
         fail(
           "Scope expansion needs /atlas widen domain NAME --reason REASON (or seed). Use /atlas clear to start a different task.",
@@ -133,8 +135,10 @@ export class AtlasSession {
 
     try {
       const raw = input.path ?? (readonly ? "." : undefined);
+
       if (typeof raw !== "string") fail("Tool needs a path");
       const spelling = raw.startsWith("@") ? raw.slice(1) : raw;
+
       if (
         spelling === "~" ||
         spelling.startsWith("~/") ||
@@ -174,6 +178,7 @@ export class AtlasSession {
 
       if (directory) {
         const descendants = s.files.filter((f) => contains(p, f.path));
+
         if (!descendants.length || descendants.some((f) => !selected.has(f.path)))
           fail(
             "Search directory exceeds selected Atlas context; use a narrower path or explicitly widen scope",
@@ -186,6 +191,7 @@ export class AtlasSession {
               );
             const child = resolve(dir, name);
             const stat = lstatSync(child);
+
             if (stat.isSymbolicLink())
               fail("Search directory contains a symlink; use exact safe file paths");
             if (stat.isDirectory()) checkTree(child);
@@ -195,6 +201,7 @@ export class AtlasSession {
       } else if (!selected.has(p)) {
         // New files are allowed only in explicitly selected domains, never guessed seed neighborhoods.
         const matches = s.domains.filter((d) => d.paths.some((base) => contains(base, p)));
+
         if (!mutation || matches.length !== 1 || !this.scope.domains?.includes(matches[0]!.name))
           fail(`Path outside selected Atlas context: ${p}. Explicitly widen scope with a reason.`);
       }
