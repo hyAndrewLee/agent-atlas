@@ -20,8 +20,8 @@ test("packed local package installs with Bun and its bunx binary installs usable
       stdout: "pipe",
       stderr: "pipe",
     });
-    const out = await new Response(p.stdout).text(),
-      err = await new Response(p.stderr).text();
+    const out = await new Response(p.stdout).text();
+    const err = await new Response(p.stderr).text();
     const code = await p.exited;
     if (code !== 0) throw new Error(`bun ${args.join(" ")} failed (${code}): ${err}\n${out}`);
     return out;

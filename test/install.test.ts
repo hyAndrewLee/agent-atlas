@@ -45,8 +45,8 @@ test("successful install preserves instructions/config and idempotence verifies 
 test("valid new nodes and preapproved domains refresh through an atomic pointer, rules untouched", async () => {
   const root = fixture(files);
   await init(root, r, { bundle });
-  const rulesBytes = readFileSync(join(root, RULES), "utf8"),
-    pointer = load(root).current.snapshot;
+  const rulesBytes = readFileSync(join(root, RULES), "utf8");
+  const pointer = load(root).current.snapshot;
   put(root, "app/b.ts", 'export {a} from "./a";');
   expect(check(root).fresh).toBe(false);
   const beforeCheck = tree(root);
@@ -126,8 +126,8 @@ test("stale sources and artifacts never activate a mixed snapshot; concurrent wr
   expect(Object.keys(tree(root2))).toEqual(Object.keys(before));
 });
 test("installation refuses symlink destination ancestors without following them", async () => {
-  const root = fixture(files),
-    outside = fixture({ keep: "safe" });
+  const root = fixture(files);
+  const outside = fixture({ keep: "safe" });
   symlinkSync(outside, join(root, ".pi"));
   const before = tree(outside);
   await expect(init(root, r, { bundle })).rejects.toThrow("Symlink");

@@ -61,6 +61,7 @@ export function load(root: string): {
   const rulesText = read(root, RULES);
   return { current, rules: JSON.parse(rulesText), snapshot, rulesText };
 }
+
 export function check(root: string) {
   const state = load(root);
   // ponytail: full content hashing, but do not reparse unchanged trees. Incremental
@@ -71,8 +72,10 @@ export function check(root: string) {
   )
     return { ...state, next: state.snapshot, fresh: true };
   const next = build(root, state.rules, state.snapshot);
+
   return { ...state, next, fresh: json(next) === json(state.snapshot) };
 }
+
 export function lock<T>(root: string, fn: () => T): T {
   root = realpathSync(root);
   const path = safePath(root, ".agent-atlas.lock");
@@ -85,6 +88,7 @@ export function lock<T>(root: string, fn: () => T): T {
       );
     throw e;
   }
+
   const inode = lstatSync(path).ino;
   try {
     return fn();
@@ -93,6 +97,7 @@ export function lock<T>(root: string, fn: () => T): T {
     rmSync(path, { recursive: true });
   }
 }
+
 export function assertFresh(root: string, next: Snapshot, rulesText: string) {
   if (inventoryHash(inventory(root)) !== next.inputHash || read(root, RULES) !== rulesText)
     fail(
@@ -106,17 +111,19 @@ export function refresh(
   // Validate before taking a writer lock: ordinary ambiguity is entirely read-only.
   const planned = check(root);
   if (planned.fresh) return { changed: false, snapshot: planned.snapshot };
+
   return lock(root, () => {
     const state = check(root);
     if (state.fresh) return { changed: false, snapshot: state.snapshot };
     beforePublish?.();
     assertFresh(root, state.next, state.rulesText);
+
     // Recheck ownership immediately before publishing, including externally edited artifacts.
     const again = load(root);
     if (json(again.current) !== json(state.current))
       fail("Atlas pointer changed during indexing; retry");
-    const bytes = json(state.next),
-      digest = hash(bytes);
+    const bytes = json(state.next);
+    const digest = hash(bytes);
     const snapshotPath = `.agent-atlas/snapshots/${digest}.json`;
     const pointerTemp = `.agent-atlas/.current-${randomUUID()}`;
     let created = false;
