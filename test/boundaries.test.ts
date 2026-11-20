@@ -50,8 +50,9 @@ test("unsupported config, syntax, local #imports, assets, excluded targets and a
     [{ "a.ts": 'import x from "#local";' }, "Unresolved local"],
     [{ "a.ts": 'import "./a.css";', "a.css": "body{}" }, "Unresolved local"],
     [{ "a.ts": "export const = ???" }, "Syntax parse error"],
-  ] as [Record<string, string>, string][])
+  ] as [Record<string, string>, string][]) {
     expect(() => build(fixture(files), rules)).toThrow(expected);
+  }
   const root = fixture({ "app/a.ts": 'import "../excluded/b";', "excluded/b.ts": "export {};" });
   expect(() =>
     build(root, { version: 1, domains: [{ name: "app", paths: ["app"] }], exclude: ["excluded"] }),

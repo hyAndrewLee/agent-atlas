@@ -3,6 +3,8 @@ import { isAbsolute, relative, resolve, posix } from "node:path";
 import { createHash } from "node:crypto";
 import ts from "typescript";
 
+const PACKAGE_MANIFEST = "package.json";
+
 export const IGNORED = [".git", "node_modules", ".pi", ".agent-atlas", ".agent-atlas.lock"];
 export const hash = (s: string | Uint8Array) => createHash("sha256").update(s).digest("hex");
 export const json = (x: unknown) => JSON.stringify(x, null, 2) + "\n";
@@ -41,12 +43,15 @@ export function cleanPath(p: unknown, allowRoot = true): string {
     [...p].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) ||
     isAbsolute(p) ||
     p.split("/").some((x) => x === ".." || x === "")
-  )
+  ) {
     fail(`Unsafe repository path: ${String(p)}`);
+  }
+
   const n = posix.normalize(p);
 
-  if ((!allowRoot && n === ".") || n !== p || p.endsWith("/"))
+  if ((!allowRoot && n === ".") || n !== p || p.endsWith("/")) {
     fail(`Use normalized repository-relative paths: ${p}`);
+  }
 
   return n;
 }
@@ -59,9 +64,13 @@ export function safePath(root: string, p: string): string {
   for (const part of p === "." ? [] : p.split("/")) {
     current = resolve(current, part);
     try {
-      if (lstatSync(current).isSymbolicLink()) fail(`Symlink is not supported: ${p}`);
+      if (lstatSync(current).isSymbolicLink()) {
+        fail(`Symlink is not supported: ${p}`);
+      }
     } catch (e: any) {
-      if (e.code !== "ENOENT") throw e;
+      if (e.code !== "ENOENT") {
+        throw e;
+      }
     }
   }
 
@@ -77,8 +86,10 @@ export function parseRules(input: unknown): Rules {
     !Array.isArray(r.domains) ||
     !Array.isArray(r.exclude) ||
     Object.keys(r).some((k) => !["version", "domains", "exclude", "autoPackages"].includes(k))
-  )
+  ) {
     fail("Rules require version:1, domains:[], exclude:[]; optional autoPackages:[] only");
+  }
+
   const names = new Set<string>();
   const paths: string[] = [];
   for (const d of r.domains) {
@@ -90,20 +101,26 @@ export function parseRules(input: unknown): Rules {
       !Array.isArray(d.paths) ||
       !d.paths.length ||
       Object.keys(d).some((k) => !["name", "paths"].includes(k))
-    )
+    ) {
       fail(
         "Domain names must be unique, nonempty simple identifiers; paths must be nonempty arrays",
       );
+    }
     names.add(d.name);
     paths.push(...d.paths.map((p) => cleanPath(p)));
   }
   paths.push(...r.exclude.map((p) => cleanPath(p)));
-  for (let i = 0; i < paths.length; i++)
-    for (let j = i + 1; j < paths.length; j++)
-      if (contains(paths[i]!, paths[j]!) || contains(paths[j]!, paths[i]!))
+  for (let i = 0; i < paths.length; i++) {
+    for (let j = i + 1; j < paths.length; j++) {
+      if (contains(paths[i]!, paths[j]!) || contains(paths[j]!, paths[i]!)) {
         fail(`Overlapping ownership rules: ${paths[i]} and ${paths[j]}`);
-  if (r.autoPackages !== undefined && !Array.isArray(r.autoPackages))
+      }
+    }
+  }
+  if (r.autoPackages !== undefined && !Array.isArray(r.autoPackages)) {
     fail("autoPackages must be an array");
+  }
+
   const autos: string[] = [];
   for (const a of r.autoPackages ?? []) {
     if (
@@ -111,12 +128,15 @@ export function parseRules(input: unknown): Rules {
       typeof a.prefix !== "string" ||
       !/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/.test(a.prefix) ||
       Object.keys(a).some((k) => !["under", "prefix"].includes(k))
-    )
+    ) {
       fail("Invalid autoPackages rule");
+    }
     cleanPath(a.under, false);
-    for (const p of [...paths, ...autos])
-      if (contains(p, a.under) || contains(a.under, p))
+    for (const p of [...paths, ...autos]) {
+      if (contains(p, a.under) || contains(a.under, p)) {
         fail(`Overlapping package-creation rule: ${a.under} and ${p}`);
+      }
+    }
     autos.push(a.under);
   }
 
@@ -128,20 +148,27 @@ export function inventory(root: string): Map<string, Buffer> {
   const files = new Map<string, Buffer>();
   const walk = (dir: string) => {
     for (const name of readdirSync(safePath(root, dir)).sort()) {
-      if (IGNORED.includes(name)) continue;
+      if (IGNORED.includes(name)) {
+        continue;
+      }
+
       const p = dir === "." ? name : `${dir}/${name}`;
       cleanPath(p);
       const absolute = safePath(root, p);
       const stat = lstatSync(absolute);
 
-      if (stat.isDirectory()) walk(p);
-      else if (stat.isFile()) {
-        if (stat.size > 8 * 1024 * 1024)
+      if (stat.isDirectory()) {
+        walk(p);
+      } else if (stat.isFile()) {
+        if (stat.size > 8 * 1024 * 1024) {
           fail(
             `File exceeds v1 8 MiB scan limit: ${p}. Explicit exclusions still hash files; move build/dependency output outside the indexed tree.`,
           );
+        }
         files.set(p, readFileSync(absolute));
-      } else fail(`Unsupported filesystem entry: ${p}`);
+      } else {
+        fail(`Unsupported filesystem entry: ${p}`);
+      }
     }
   };
   walk(".");
@@ -156,10 +183,12 @@ const unsupportedLanguage =
   /\.(?:py|rs|go|java|kt|c|h|cpp|cs|rb|php|swift|vue|svelte|astro|sh|sql|lua|ex|exs|scala|clj|dart|m|mm|ipynb)$/;
 export function propose(files: Map<string, Buffer>): Rules {
   const packages = [...files.keys()].filter(
-    (p) => p === "package.json" || p.endsWith("/package.json"),
+    (p) => p === PACKAGE_MANIFEST || p.endsWith(`/${PACKAGE_MANIFEST}`),
   );
-  if (packages.length === 1 && packages[0] === "package.json")
+
+  if (packages.length === 1 && packages[0] === PACKAGE_MANIFEST) {
     return { version: 1, domains: [{ name: "root", paths: ["."] }], exclude: [] };
+  }
   fail(
     'No unambiguous single root package boundary. Zero files written. Supply --config rules.json, e.g. {"version":1,"domains":[{"name":"app","paths":["src"]}],"exclude":["README.md"]}. Package boundaries found: ' +
       (packages.join(", ") || "none"),
@@ -171,7 +200,7 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
   const rules = parseRules(rulesInput);
   const data = inventory(root);
   const packages = [...data.keys()].filter(
-    (p) => p === "package.json" || p.endsWith("/package.json"),
+    (p) => p === PACKAGE_MANIFEST || p.endsWith(`/${PACKAGE_MANIFEST}`),
   );
   const domains = rules.domains.map((d) => ({ name: d.name, paths: [...d.paths].sort() }));
   for (const a of rules.autoPackages ?? []) {
@@ -181,10 +210,13 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
       if (posix.dirname(dir) === a.under) {
         const name = a.prefix + posix.basename(dir);
 
-        if (domains.some((d) => d.name === name))
+        if (domains.some((d) => d.name === name)) {
           fail(`Auto package domain name conflict: ${name}`);
-        if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/.test(name))
+        }
+
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/.test(name)) {
           fail(`Invalid auto package domain name: ${name}`);
+        }
         domains.push({ name, paths: [dir] });
       }
     }
@@ -197,14 +229,17 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
     const matches = domains.filter((d) => d.paths.some((p) => contains(p, path)));
     const excluded = rules.exclude.some((p) => contains(p, path));
 
-    if (matches.length + Number(excluded) !== 1)
+    if (matches.length + Number(excluded) !== 1) {
       issues.push(
         `Unassigned or conflicting path: ${path}. Declare a domain path or explicit exclusion.`,
       );
-    if (!excluded && !sourcePattern.test(path))
+    }
+
+    if (!excluded && !sourcePattern.test(path)) {
       coverage.push(
         `${unsupportedLanguage.test(path) ? "Unsupported language (inventory only)" : "Inventory only (no dependency extraction)"}: ${path}`,
       );
+    }
 
     return { path, domain: excluded ? null : (matches[0]?.name ?? null), hash: hash(bytes) };
   });
@@ -216,10 +251,11 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
       !rules.exclude.some((base) => contains(base, p)) &&
       !previous.packages.includes(p) &&
       !domains.some((d) => d.paths.includes(dir))
-    )
+    ) {
       issues.push(
         `New package boundary requires an explicit domain or preapproved autoPackages rule: ${p}`,
       );
+    }
   }
   const nodes = files
     .filter((f) => f.domain !== null && sourcePattern.test(f.path))
@@ -237,11 +273,15 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
       const candidate = [prefix + "tsconfig.json", prefix + "jsconfig.json"].find((c) =>
         data.has(c),
       );
+
       if (candidate) {
         usedConfigs.add(candidate);
         break;
       }
-      if (dir === ".") break;
+
+      if (dir === ".") {
+        break;
+      }
       dir = posix.dirname(dir);
     }
   }
@@ -253,35 +293,42 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
       issues.push(`Invalid config: ${p}`);
       continue;
     }
+
     const config = parsed.config;
 
     if (!config || typeof config !== "object" || Array.isArray(config)) {
       issues.push(`Invalid config object: ${p}`);
       continue;
     }
+
     if (config.extends || config.references) {
       issues.push(
         `Unsupported config extends/references: ${p}. v1 requires self-contained compilerOptions.`,
       );
       continue;
     }
+
     const dir = posix.dirname(p);
     const opts = config.compilerOptions ?? {};
 
-    if (opts.moduleSuffixes || opts.rootDirs || opts.customConditions)
+    if (opts.moduleSuffixes || opts.rootDirs || opts.customConditions) {
       issues.push(`Unsupported resolver options in ${p}: moduleSuffixes/rootDirs/customConditions`);
+    }
+
     const base = opts.baseUrl ?? ".";
 
     if (typeof base !== "string") {
       issues.push(`Invalid baseUrl: ${p}`);
       continue;
     }
+
     const baseAbs = resolve(root, dir, base);
 
     if (!contains(root, baseAbs)) {
       issues.push(`baseUrl escapes repository: ${p}`);
       continue;
     }
+
     if (opts.paths) {
       if (typeof opts.paths !== "object" || Array.isArray(opts.paths)) {
         issues.push(`Invalid paths in ${p}`);
@@ -293,18 +340,22 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
           !Array.isArray(values) ||
           !values.length ||
           values.some((v) => typeof v !== "string" || !contains(root, resolve(baseAbs, v)))
-        )
+        ) {
           issues.push(`Invalid/escaping alias ${key} in ${p}`);
+        }
       }
     }
+
     const converted = ts.convertCompilerOptionsFromJson(
       { allowJs: true, ...opts },
       resolve(root, dir),
     );
-    if (converted.errors.length)
+
+    if (converted.errors.length) {
       issues.push(
         `Invalid compilerOptions in ${p}: ${converted.errors.map((e) => ts.flattenDiagnosticMessageText(e.messageText, " ")).join("; ")}`,
       );
+    }
     configs.set(dir, {
       ...converted.options,
       moduleResolution: ts.ModuleResolutionKind.Bundler,
@@ -318,7 +369,9 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
     let d = resolve(root, posix.dirname(p));
     while (contains(root, d)) {
       dirs.add(d);
-      if (d === root) break;
+      if (d === root) {
+        break;
+      }
       d = resolve(d, "..");
     }
   }
@@ -336,8 +389,9 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
 
       return typeof name === "string" ? [name] : [];
     } catch {
-      if (!rules.exclude.some((base) => contains(base, p)))
+      if (!rules.exclude.some((base) => contains(base, p))) {
         issues.push(`Invalid package.json: ${p}`);
+      }
 
       return [];
     }
@@ -351,7 +405,10 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
         options = configs.get(dir);
         break;
       }
-      if (dir === ".") break;
+
+      if (dir === ".") {
+        break;
+      }
       dir = posix.dirname(dir);
     }
     options ??= {
@@ -362,43 +419,55 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
     const source = ts.createSourceFile(p, data.get(p)!.toString(), ts.ScriptTarget.Latest, true);
     const diagnostics = (source as ts.SourceFile & { parseDiagnostics: ts.Diagnostic[] })
       .parseDiagnostics;
-    if (diagnostics.length)
+
+    if (diagnostics.length) {
       issues.push(
         `Syntax parse error: ${p}: ${diagnostics.map((e) => ts.flattenDiagnosticMessageText(e.messageText, " ")).join("; ")}`,
       );
+    }
+
     const imports: string[] = [];
     const visit = (node: ts.Node) => {
       if (
         (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
         node.moduleSpecifier &&
         ts.isStringLiteral(node.moduleSpecifier)
-      )
+      ) {
         imports.push(node.moduleSpecifier.text);
+      }
+
       if (
         ts.isImportEqualsDeclaration(node) &&
         ts.isExternalModuleReference(node.moduleReference) &&
         node.moduleReference.expression &&
         ts.isStringLiteral(node.moduleReference.expression)
-      )
+      ) {
         imports.push(node.moduleReference.expression.text);
+      }
+
       if (
         ts.isImportTypeNode(node) &&
         ts.isLiteralTypeNode(node.argument) &&
         ts.isStringLiteral(node.argument.literal)
-      )
+      ) {
         imports.push(node.argument.literal.text);
-      if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword)
+      }
+
+      if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword) {
         coverage.push(
           `Unindexed import.meta usage: ${p}:${source.getLineAndCharacterOfPosition(node.getStart()).line + 1}`,
         );
+      }
+
       if (
         ts.isCallExpression(node) &&
         (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
           (ts.isIdentifier(node.expression) && node.expression.text === "require"))
-      )
+      ) {
         coverage.push(
           `Unindexed ${node.expression.kind === ts.SyntaxKind.ImportKeyword ? "dynamic import" : "require call"}: ${p}:${source.getLineAndCharacterOfPosition(node.getStart()).line + 1}`,
         );
+      }
       ts.forEachChild(node, visit);
     };
     visit(source);
@@ -406,8 +475,9 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
       source.referencedFiles.length ||
       source.typeReferenceDirectives.length ||
       source.libReferenceDirectives.length
-    )
+    ) {
       coverage.push(`Unindexed triple-slash references: ${p}`);
+    }
     for (const specifier of [...new Set(imports)].sort()) {
       const alias = Object.keys(options.paths ?? {}).some((k) =>
         k.includes("*")
@@ -426,20 +496,28 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
         options,
         host,
       ).resolvedModule;
+
       if (result) {
         const target = toRel(result.resolvedFileName);
 
-        if (!nodeSet.has(target))
+        if (!nodeSet.has(target)) {
           issues.push(
             `Local import targets excluded/unsupported file: ${p} -> ${specifier} (${target})`,
           );
-        else adjacency[p]!.push(target);
-      } else if (isLocal) issues.push(`Unresolved local import: ${p} -> ${specifier}`);
-      else external.push({ from: p, specifier });
+        } else {
+          adjacency[p]!.push(target);
+        }
+      } else if (isLocal) {
+        issues.push(`Unresolved local import: ${p} -> ${specifier}`);
+      } else {
+        external.push({ from: p, specifier });
+      }
     }
     adjacency[p] = [...new Set(adjacency[p])].sort();
   }
-  if (issues.length) throw new AtlasError(issues.sort());
+  if (issues.length) {
+    throw new AtlasError(issues.sort());
+  }
 
   return {
     version: 1,
@@ -457,20 +535,32 @@ export function build(root: string, rulesInput: unknown, previous?: Snapshot): S
 
 export type Scope = { domains?: string[]; seeds?: string[] };
 export function select(snapshot: Snapshot, scope: Scope): Set<string> {
-  if (!scope.domains?.length && !scope.seeds?.length)
+  if (!scope.domains?.length && !scope.seeds?.length) {
     fail("Select --domain NAME or --seed FILE; task text is never guessed");
-  for (const d of scope.domains ?? [])
-    if (!snapshot.domains.some((x) => x.name === d)) fail(`Unknown domain: ${d}`);
-  for (const p of scope.seeds ?? [])
-    if (!snapshot.nodes.includes(cleanPath(p, false))) fail(`Unknown graph seed: ${p}`);
+  }
+  for (const d of scope.domains ?? []) {
+    if (!snapshot.domains.some((x) => x.name === d)) {
+      fail(`Unknown domain: ${d}`);
+    }
+  }
+  for (const p of scope.seeds ?? []) {
+    if (!snapshot.nodes.includes(cleanPath(p, false))) {
+      fail(`Unknown graph seed: ${p}`);
+    }
+  }
   const selected = new Set(
     snapshot.files.filter((f) => f.domain && scope.domains?.includes(f.domain)).map((f) => f.path),
   );
   for (const seed of scope.seeds ?? []) {
     selected.add(seed);
-    for (const target of snapshot.adjacency[seed] ?? []) selected.add(target);
-    for (const [source, targets] of Object.entries(snapshot.adjacency))
-      if (targets.includes(seed)) selected.add(source);
+    for (const target of snapshot.adjacency[seed] ?? []) {
+      selected.add(target);
+    }
+    for (const [source, targets] of Object.entries(snapshot.adjacency)) {
+      if (targets.includes(seed)) {
+        selected.add(source);
+      }
+    }
   }
 
   return selected;

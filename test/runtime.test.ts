@@ -19,6 +19,7 @@ async function setup() {
     "other/b.ts": "export const b=1;",
   });
   await init(root, rules);
+
   return root;
 }
 test("runtime requires explicit scope; native reads/searches/edits respect it, widening needs reason", async () => {

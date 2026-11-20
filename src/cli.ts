@@ -34,12 +34,21 @@ export function args(argv: string[]) {
     const key = rest[i];
     const value = rest[i + 1];
 
-    if (!value) throw new Error(`Missing value for ${key}`);
-    if (key === OPTION.root) root = realpathSync(value);
-    else if (key === OPTION.config) config = value;
-    else if (key === OPTION.domain) domains.push(value);
-    else if (key === OPTION.seed) seeds.push(value);
-    else throw new Error(`Unknown option: ${key}`);
+    if (!value) {
+      throw new Error(`Missing value for ${key}`);
+    }
+
+    if (key === OPTION.root) {
+      root = realpathSync(value);
+    } else if (key === OPTION.config) {
+      config = value;
+    } else if (key === OPTION.domain) {
+      domains.push(value);
+    } else if (key === OPTION.seed) {
+      seeds.push(value);
+    } else {
+      throw new Error(`Unknown option: ${key}`);
+    }
   }
 
   return { command, root: realpathSync(root), config, scope: { domains, seeds } };
@@ -48,16 +57,20 @@ export function args(argv: string[]) {
 export async function main(argv = process.argv.slice(2)) {
   const a = args(argv);
 
-  if (a.command === COMMAND.help || a.command === "--help")
+  if (a.command === COMMAND.help || a.command === "--help") {
     return "agent-atlas init|check|refresh|scan|context|query [--root DIR] [--config RULES.json] [--domain NAME | --seed FILE]\ninit: optional explicit --config; check/context/query/scan are read-only; refresh never changes human rules.";
+  }
 
-  if (!COMMANDS.some((command) => command === a.command))
+  if (!COMMANDS.some((command) => command === a.command)) {
     throw new Error(`Unknown command: ${a.command}`);
+  }
 
-  if (a.config && a.command !== COMMAND.init && a.command !== COMMAND.scan)
+  if (a.config && a.command !== COMMAND.init && a.command !== COMMAND.scan) {
     throw new Error(
       "--config is only accepted by init/scan; installed rules are .agent-atlas/rules.json",
     );
+  }
+
   const input = a.config ? JSON.parse(readFileSync(safePath(a.root, a.config), "utf8")) : undefined;
 
   if (a.command === COMMAND.init) {
@@ -75,7 +88,9 @@ export async function main(argv = process.argv.slice(2)) {
   if (a.command === COMMAND.check) {
     const r = check(a.root);
 
-    if (!r.fresh) throw new Error("Atlas is stale; run refresh. No files written.");
+    if (!r.fresh) {
+      throw new Error("Atlas is stale; run refresh. No files written.");
+    }
 
     return `Fresh: ${r.snapshot.inputHash}\n${r.snapshot.coverage.join("\n")}`;
   }
@@ -91,8 +106,9 @@ export async function main(argv = process.argv.slice(2)) {
   if (installed(a.root)) {
     const r = check(a.root);
 
-    if (!r.fresh)
+    if (!r.fresh) {
       throw new Error("Atlas is stale; run refresh. Read-only context never refreshes implicitly.");
+    }
 
     return context(r.snapshot, a.scope);
   }

@@ -24,8 +24,9 @@ export default function atlas(pi: PiAPI, root: string) {
     handler(args, ctx) {
       let content: string;
       try {
-        if (!compatible(ctx))
+        if (!compatible(ctx)) {
           throw new Error("Atlas v1 requires Pi to start at the installed repository root");
+        }
         content = session.command(args);
       } catch (e: any) {
         content = `Atlas: ${String(e.message ?? e)}`;
@@ -41,11 +42,12 @@ export default function atlas(pi: PiAPI, root: string) {
   pi.on("session_start", (_event, ctx) => {
     session.scope = undefined;
     session.dirty = false;
-    if (ctx.hasUI)
+    if (ctx.hasUI) {
       ctx.ui.notify(
         "Atlas: /atlas domain NAME or /atlas seed FILE selects task scope. Read-only discovery until selected.",
         "info",
       );
+    }
   });
   pi.on("resources_discover", (_event, ctx) =>
     compatible(ctx) ? { skillPaths: [join(root, SKILL)] } : undefined,
@@ -79,18 +81,20 @@ export default function atlas(pi: PiAPI, root: string) {
     };
   });
   pi.on("tool_call", (event, ctx) => {
-    if (!compatible(ctx))
+    if (!compatible(ctx)) {
       return {
         block: true,
         reason: "Atlas v1 requires Pi cwd to be the installed repository root",
         terminate: true,
       };
+    }
     // Detect edits made outside Pi since the last model context. Never refresh in
     // a tool preflight: successful edits are refreshed at the next context boundary.
     try {
-      if (!check(root).fresh && !session.dirty)
+      if (!check(root).fresh && !session.dirty) {
         session.problem =
           "Sources changed externally; navigation refreshes before the next request. Use /atlas refresh if it cannot update.";
+      }
     } catch (e: any) {
       session.problem = String(e.message ?? e);
     }
@@ -102,7 +106,9 @@ export default function atlas(pi: PiAPI, root: string) {
     session.result(event.toolName, !!event.isError);
   });
   pi.on("agent_settled", () => {
-    if (session.dirty) session.prepare();
+    if (session.dirty) {
+      session.prepare();
+    }
   });
 
   return session;

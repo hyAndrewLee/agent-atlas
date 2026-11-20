@@ -53,8 +53,10 @@ export async function runtimeBundle(): Promise<string> {
     minify: true,
     tsconfig: join(import.meta.dir, "../tsconfig.json"),
   });
-  if (!result.success || result.outputs.length !== 1)
+
+  if (!result.success || result.outputs.length !== 1) {
     fail(`Cannot build self-contained Pi adapter: ${result.logs.join("\n")}`);
+  }
 
   const dependencyRoot = dirname(Bun.resolveSync("typescript/package.json", import.meta.dir));
   const notices = ["LICENSE.txt", "ThirdPartyNoticeText.txt"]
@@ -77,26 +79,32 @@ export async function init(
   options: { beforePublish?: () => void; afterExtension?: () => void; bundle?: string } = {},
 ) {
   if (installed(root)) {
-    if (!existsSync(safePath(root, ".agent-atlas/current.json")))
+    if (!existsSync(safePath(root, ".agent-atlas/current.json"))) {
       fail(
         "Existing unowned .agent-atlas area; nothing overwritten. Choose a different location or resolve it manually.",
       );
+    }
+
     const state = check(root);
     for (const file of readdirSync(safePath(root, ".agent-atlas/snapshots"))) {
       if (
         !/^[a-f0-9]{64}\.json$/.test(file) ||
         hash(read(root, `.agent-atlas/snapshots/${file}`)) !== file.slice(0, -5)
-      )
+      ) {
         fail(`Edited generated snapshot conflict: ${file}`);
+      }
     }
-    if (input && json(parseRules(input)) !== json(state.rules))
+    if (input && json(parseRules(input)) !== json(state.rules)) {
       fail(
         "Already installed: edit human-owned .agent-atlas/rules.json explicitly, then refresh. init never replaces rules.",
       );
-    if (!state.fresh)
+    }
+
+    if (!state.fresh) {
       fail(
         "Already installed but stale; use refresh. init never silently changes an existing installation.",
       );
+    }
 
     return { changed: false, snapshot: state.snapshot };
   }
@@ -106,16 +114,20 @@ export async function init(
   const bundle = options.bundle ?? (await runtimeBundle());
 
   return lock(root, () => {
-    if (installed(root)) fail("Installation appeared concurrently; retry init");
+    if (installed(root)) {
+      fail("Installation appeared concurrently; retry init");
+    }
     for (const p of [
       EXTENSION,
       ".pi/extensions/agent-atlas.js",
       ".pi/extensions/agent-atlas",
       ".pi/skills/agent-atlas",
       ".agents/skills/agent-atlas",
-    ])
-      if (existsSync(safePath(root, p)))
+    ]) {
+      if (existsSync(safePath(root, p))) {
         fail(`Existing user file/directory conflict: ${p}. Nothing overwritten.`);
+      }
+    }
     // Preflight all ancestors before creating anything outside our temporary lock directory.
     safePath(root, EXTENSION);
     const stage = safePath(root, ".agent-atlas.lock/stage");
@@ -135,28 +147,34 @@ export async function init(
     writeFileSync(join(stage, "snapshots", `${digest}.json`), snapshotBytes, { flag: "wx" });
     writeFileSync(join(stage, "current.json"), json(current), { flag: "wx" });
     options.beforePublish?.();
-    if (inventoryHash(inventory(root)) !== snapshot.inputHash)
+    if (inventoryHash(inventory(root)) !== snapshot.inputHash) {
       fail("Sources changed during install; retry. Nothing installed.");
+    }
 
     const madeDirs: string[] = [];
     let wroteExtension = false;
     try {
-      for (const p of [".pi", ".pi/extensions"])
+      for (const p of [".pi", ".pi/extensions"]) {
         if (!existsSync(safePath(root, p))) {
           mkdirSync(safePath(root, p));
           madeDirs.push(p);
         }
+      }
       writeFileSync(safePath(root, EXTENSION), stub, { flag: "wx" });
       wroteExtension = true;
       options.afterExtension?.();
-      if (inventoryHash(inventory(root)) !== snapshot.inputHash)
+      if (inventoryHash(inventory(root)) !== snapshot.inputHash) {
         fail("Sources changed while installing; retry");
+      }
       // Activation is last. Refreshes later publish by one atomic pointer replacement.
-      if (existsSync(safePath(root, ".agent-atlas")))
+      if (existsSync(safePath(root, ".agent-atlas"))) {
         fail("An .agent-atlas area appeared concurrently; nothing overwritten");
+      }
       renameSync(stage, safePath(root, ".agent-atlas"));
     } catch (e) {
-      if (wroteExtension && read(root, EXTENSION) === stub) rmSync(safePath(root, EXTENSION));
+      if (wroteExtension && read(root, EXTENSION) === stub) {
+        rmSync(safePath(root, EXTENSION));
+      }
       for (const p of madeDirs.reverse()) {
         try {
           rmdirSync(safePath(root, p));

@@ -37,7 +37,10 @@ export class AtlasSession {
       this.snapshot = result.snapshot;
       this.problem = undefined;
       this.dirty = false;
-      if (this.scope) return context(result.snapshot, this.scope);
+      if (this.scope) {
+        return context(result.snapshot, this.scope);
+      }
+
       const map = result.snapshot.domains.map((d) => `${d.name}: ${d.paths.join(", ")}`).join("\n");
 
       return `Agent Atlas: no task scope selected. Read-only discovery only; ask the user for /atlas domain NAME or /atlas seed FILE. Never guess from task text.\nDomain map:\n${map}\nStatic JS/TS only; ${result.snapshot.coverage.length} coverage limitations. Shell/custom tools are not a security sandbox.`.slice(
@@ -58,7 +61,9 @@ export class AtlasSession {
     const [action, kind, value, ...rest] = text.trim().split(/\s+/);
 
     if (action === ACTION.check) {
-      if (kind) fail("Usage: /atlas check");
+      if (kind) {
+        fail("Usage: /atlas check");
+      }
 
       return check(this.root).fresh
         ? "Atlas is fresh."
@@ -66,7 +71,9 @@ export class AtlasSession {
     }
 
     if (action === ACTION.refresh) {
-      if (kind) fail("Usage: /atlas refresh");
+      if (kind) {
+        fail("Usage: /atlas refresh");
+      }
 
       return this.prepare();
     }
@@ -87,35 +94,41 @@ export class AtlasSession {
         !value ||
         rest[0] !== "--reason" ||
         !rest.slice(1).join(" ").trim()
-      )
+      ) {
         fail(
           "Usage: /atlas widen domain NAME --reason REASON (or seed FILE), after selecting scope",
         );
+      }
       reason = rest.slice(1).join(" ");
       next = {
         domains: [...(this.scope.domains ?? []), ...(kind === ACTION.domain ? [value] : [])],
         seeds: [...(this.scope.seeds ?? []), ...(kind === ACTION.seed ? [value] : [])],
       };
     } else {
-      if (!SCOPE_KINDS.some((scopeKind) => scopeKind === action) || !kind || value)
+      if (!SCOPE_KINDS.some((scopeKind) => scopeKind === action) || !kind || value) {
         fail(
           "Usage: /atlas domain NAME | seed FILE | widen domain NAME --reason REASON | check | refresh | clear",
         );
+      }
       next = action === ACTION.domain ? { domains: [kind] } : { seeds: [kind] };
     }
 
     const state = check(this.root);
 
-    if (!state.fresh) fail("Atlas is stale; /atlas refresh before selecting scope");
+    if (!state.fresh) {
+      fail("Atlas is stale; /atlas refresh before selecting scope");
+    }
+
     const nextFiles = select(state.snapshot, next);
 
     if (this.scope && action !== ACTION.widen) {
       const oldFiles = select(state.snapshot, this.scope);
 
-      if ([...nextFiles].some((p) => !oldFiles.has(p)))
+      if ([...nextFiles].some((p) => !oldFiles.has(p))) {
         fail(
           "Scope expansion needs /atlas widen domain NAME --reason REASON (or seed). Use /atlas clear to start a different task.",
         );
+      }
     }
     this.scope = next;
     this.snapshot = state.snapshot;
@@ -131,17 +144,24 @@ export class AtlasSession {
     const mutation = writes.includes(toolName);
 
     if (!this.scope || this.problem) {
-      if (!readonly)
+      if (!readonly) {
         return this.problem
           ? `Atlas requires user resolution: ${this.problem.slice(0, 1500)}`
           : "Select Atlas scope with /atlas domain NAME or /atlas seed FILE first. Read-only discovery remains available.";
+      }
     }
-    if (!readonly && !mutation) return; // Explicit limitation: no shell/custom-tool sandbox.
+
+    if (!readonly && !mutation) {
+      return;
+    } // Explicit limitation: no shell/custom-tool sandbox.
 
     try {
       const raw = input.path ?? (readonly ? "." : undefined);
 
-      if (typeof raw !== "string") fail("Tool needs a path");
+      if (typeof raw !== "string") {
+        fail("Tool needs a path");
+      }
+
       const spelling = raw.startsWith("@") ? raw.slice(1) : raw;
 
       if (
@@ -149,11 +169,16 @@ export class AtlasSession {
         spelling.startsWith("~/") ||
         spelling.startsWith("file:") ||
         /[\u00a0\u2000-\u200a\u202f\u205f\u3000]/.test(spelling)
-      )
+      ) {
         fail("Use an exact repository path, not home/file-URL/Unicode-space aliases");
+      }
+
       const abs = resolve(cwd, spelling);
 
-      if (!contains(this.root, abs)) fail("Tool path escapes Atlas repository");
+      if (!contains(this.root, abs)) {
+        fail("Tool path escapes Atlas repository");
+      }
+
       const p = relative(this.root, abs).split("\\").join("/") || ".";
       safePath(this.root, p);
       // Pi's native read has filename-spelling fallbacks. Require an existing
@@ -167,39 +192,59 @@ export class AtlasSession {
       }
       input.path = abs; // Align the checked path with what Pi actually executes.
 
-      if (mutation && p.split("/").some((part) => IGNORED.includes(part)))
+      if (mutation && p.split("/").some((part) => IGNORED.includes(part))) {
         fail("Atlas/runtime/dependency metadata is protected; user must resolve it explicitly");
-      if (readonly && contains(".agent-atlas", p)) return; // Diagnostics, rules, skill and immutable snapshots.
-      if (!this.scope || this.problem) return;
+      }
+
+      if (readonly && contains(".agent-atlas", p)) {
+        return;
+      } // Diagnostics, rules, skill and immutable snapshots.
+
+      if (!this.scope || this.problem) {
+        return;
+      }
+
       const s = this.snapshot!;
       const selected = select(s, this.scope);
       let directory = false;
       try {
         directory = statSync(abs).isDirectory();
       } catch (e: any) {
-        if (e.code !== "ENOENT") throw e;
+        if (e.code !== "ENOENT") {
+          throw e;
+        }
       }
-      if (toolName === "ls") return; // Names-only discovery, not file content.
+      if (toolName === "ls") {
+        return;
+      } // Names-only discovery, not file content.
 
       if (directory) {
         const descendants = s.files.filter((f) => contains(p, f.path));
 
-        if (!descendants.length || descendants.some((f) => !selected.has(f.path)))
+        if (!descendants.length || descendants.some((f) => !selected.has(f.path))) {
           fail(
             "Search directory exceeds selected Atlas context; use a narrower path or explicitly widen scope",
           );
+        }
+
         const checkTree = (dir: string) => {
           for (const name of readdirSync(dir)) {
-            if (IGNORED.includes(name))
+            if (IGNORED.includes(name)) {
               fail(
                 "Search directory contains reserved/unindexed areas; target a narrower directory or file",
               );
+            }
+
             const child = resolve(dir, name);
             const stat = lstatSync(child);
 
-            if (stat.isSymbolicLink())
+            if (stat.isSymbolicLink()) {
               fail("Search directory contains a symlink; use exact safe file paths");
-            if (stat.isDirectory()) checkTree(child);
+            }
+
+            if (stat.isDirectory()) {
+              checkTree(child);
+            }
           }
         };
         checkTree(abs);
@@ -207,8 +252,9 @@ export class AtlasSession {
         // New files are allowed only in explicitly selected domains, never guessed seed neighborhoods.
         const matches = s.domains.filter((d) => d.paths.some((base) => contains(base, p)));
 
-        if (!mutation || matches.length !== 1 || !this.scope.domains?.includes(matches[0]!.name))
+        if (!mutation || matches.length !== 1 || !this.scope.domains?.includes(matches[0]!.name)) {
           fail(`Path outside selected Atlas context: ${p}. Explicitly widen scope with a reason.`);
+        }
       }
     } catch (e: any) {
       return String(e.message ?? e);
@@ -216,6 +262,8 @@ export class AtlasSession {
   }
 
   result(toolName: string, isError: boolean) {
-    if (!isError && !["read", "grep", "find", "ls"].includes(toolName)) this.dirty = true;
+    if (!isError && !["read", "grep", "find", "ls"].includes(toolName)) {
+      this.dirty = true;
+    }
   }
 }

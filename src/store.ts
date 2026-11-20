@@ -47,20 +47,28 @@ export function load(root: string): {
     !/^[a-f0-9]{64}$/.test(current.snapshot) ||
     !current.artifacts ||
     Object.keys(current.artifacts).sort().join("|") !== [EXTENSION, RUNTIME, SKILL].sort().join("|")
-  )
+  ) {
     fail("Invalid Agent Atlas ownership pointer; restore from version control");
-  for (const [path, digest] of Object.entries(current.artifacts))
-    if (hash(read(root, path)) !== digest)
+  }
+  for (const [path, digest] of Object.entries(current.artifacts)) {
+    if (hash(read(root, path)) !== digest) {
       fail(
         `Edited generated artifact conflict: ${path}. Restore the original or remove the installation manually; nothing overwritten.`,
       );
+    }
+  }
   const bytes = read(root, `.agent-atlas/snapshots/${current.snapshot}.json`);
 
-  if (hash(bytes) !== current.snapshot)
+  if (hash(bytes) !== current.snapshot) {
     fail("Edited generated snapshot conflict; restore original bytes");
+  }
+
   const snapshot = JSON.parse(bytes) as Snapshot;
 
-  if (snapshot.version !== 1) fail("Unsupported snapshot version");
+  if (snapshot.version !== 1) {
+    fail("Unsupported snapshot version");
+  }
+
   const rulesText = read(root, RULES);
 
   return { current, rules: JSON.parse(rulesText), snapshot, rulesText };
@@ -73,8 +81,10 @@ export function check(root: string) {
   if (
     inventoryHash(inventory(root)) === state.snapshot.inputHash &&
     hash(json(parseRules(state.rules))) === state.snapshot.rulesHash
-  )
+  ) {
     return { ...state, next: state.snapshot, fresh: true };
+  }
+
   const next = build(root, state.rules, state.snapshot);
 
   return { ...state, next, fresh: json(next) === json(state.snapshot) };
@@ -86,10 +96,11 @@ export function lock<T>(root: string, fn: () => T): T {
   try {
     mkdirSync(path);
   } catch (e: any) {
-    if (e.code === "EEXIST")
+    if (e.code === "EEXIST") {
       fail(
         "Another Atlas writer or interrupted operation owns .agent-atlas.lock. Do not remove it until that operation has stopped.",
       );
+    }
     throw e;
   }
 
@@ -97,16 +108,19 @@ export function lock<T>(root: string, fn: () => T): T {
   try {
     return fn();
   } finally {
-    if (lstatSync(path).ino !== inode) fail("Writer lock changed; refusing cleanup");
+    if (lstatSync(path).ino !== inode) {
+      fail("Writer lock changed; refusing cleanup");
+    }
     rmSync(path, { recursive: true });
   }
 }
 
 export function assertFresh(root: string, next: Snapshot, rulesText: string) {
-  if (inventoryHash(inventory(root)) !== next.inputHash || read(root, RULES) !== rulesText)
+  if (inventoryHash(inventory(root)) !== next.inputHash || read(root, RULES) !== rulesText) {
     fail(
       "Sources or rules changed during indexing; retry refresh. Previous navigation remains active.",
     );
+  }
 }
 export function refresh(
   root: string,
@@ -115,20 +129,26 @@ export function refresh(
   // Validate before taking a writer lock: ordinary ambiguity is entirely read-only.
   const planned = check(root);
 
-  if (planned.fresh) return { changed: false, snapshot: planned.snapshot };
+  if (planned.fresh) {
+    return { changed: false, snapshot: planned.snapshot };
+  }
 
   return lock(root, () => {
     const state = check(root);
 
-    if (state.fresh) return { changed: false, snapshot: state.snapshot };
+    if (state.fresh) {
+      return { changed: false, snapshot: state.snapshot };
+    }
     beforePublish?.();
     assertFresh(root, state.next, state.rulesText);
 
     // Recheck ownership immediately before publishing, including externally edited artifacts.
     const again = load(root);
 
-    if (json(again.current) !== json(state.current))
+    if (json(again.current) !== json(state.current)) {
       fail("Atlas pointer changed during indexing; retry");
+    }
+
     const bytes = json(state.next);
     const digest = hash(bytes);
     const snapshotPath = `.agent-atlas/snapshots/${digest}.json`;
@@ -136,7 +156,9 @@ export function refresh(
     let created = false;
     try {
       if (exists(root, snapshotPath)) {
-        if (read(root, snapshotPath) !== bytes) fail("Immutable snapshot conflict");
+        if (read(root, snapshotPath) !== bytes) {
+          fail("Immutable snapshot conflict");
+        }
       } else {
         writeFileSync(safePath(root, snapshotPath), bytes, { flag: "wx" });
         created = true;
@@ -145,11 +167,14 @@ export function refresh(
         flag: "wx",
       });
       assertFresh(root, state.next, state.rulesText);
-      if (json(load(root).current) !== json(state.current))
+      if (json(load(root).current) !== json(state.current)) {
         fail("Atlas ownership pointer changed before publication; retry");
+      }
       renameSync(safePath(root, pointerTemp), safePath(root, ".agent-atlas/current.json"));
     } catch (e) {
-      if (created) rmSync(safePath(root, snapshotPath));
+      if (created) {
+        rmSync(safePath(root, snapshotPath));
+      }
       throw e;
     } finally {
       rmSync(safePath(root, pointerTemp), { force: true });
