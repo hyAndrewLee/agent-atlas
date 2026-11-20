@@ -20,10 +20,16 @@ test("Oxlint rejects missing braces and multiple bindings in JS and TS", () => {
         "const a = 1;\nconst b = 2;\nif (a) { console.log(b); } else { console.log(a); }\nfor (let i = 0, j = 1; i < j; i++) { console.log(i); }\n",
       );
       const run = (file: string) => Bun.spawnSync([oxlint, "--config", config, file]);
+      expect(run(good).exitCode).toBe(0);
       const result = run(bad);
       expect(result.exitCode).not.toBe(0);
       expect(result.stdout.toString()).toContain("curly");
       expect(result.stdout.toString()).toContain("one-var");
+      writeFileSync(bad, "if (a) {} else if (b) console.log(b); else console.log(a);\n");
+      expect(run(bad).stdout.toString()).toContain("curly");
+      writeFileSync(bad, "const a = 1, b = 2;\n");
+      expect(run(bad).stdout.toString()).toContain("one-var");
+      writeFileSync(good, "const { a, b } = { a: 1, b: 2 };\nif (a) {} else if (b) {} else {}\n");
       expect(run(good).exitCode).toBe(0);
     }
   } finally {
