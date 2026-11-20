@@ -166,6 +166,7 @@ export async function init(
       if (inventoryHash(inventory(root)) !== snapshot.inputHash) {
         fail("Sources changed while installing; retry");
       }
+
       // Activation is last. Refreshes later publish by one atomic pointer replacement.
       if (existsSync(safePath(root, ".agent-atlas"))) {
         fail("An .agent-atlas area appeared concurrently; nothing overwritten");

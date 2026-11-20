@@ -76,6 +76,7 @@ export function load(root: string): {
 
 export function check(root: string) {
   const state = load(root);
+
   // ponytail: full content hashing, but do not reparse unchanged trees. Incremental
   // inventories are a later optimization only after representative measurements.
   if (

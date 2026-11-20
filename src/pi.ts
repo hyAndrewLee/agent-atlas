@@ -65,6 +65,7 @@ export default function atlas(pi: PiAPI, root: string) {
     const content = compatible(ctx)
       ? session.prepare()
       : "Atlas requires the installed repository root as cwd.";
+
     // Replace old Atlas context rather than accumulating a map every turn. No
     // continuation requests, provider calls, subprocesses, timers or tool loops.
     return {

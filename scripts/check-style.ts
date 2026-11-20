@@ -10,8 +10,29 @@ export function checkStyle(source: string, path = "fixture.ts"): string[] {
   const report = (node: ts.Node, message: string) => {
     errors.push(`${path}:${line(node.getStart(file)) + 1}: ${message}`);
   };
-  const blankBefore = (previous: ts.Node, current: ts.Node) =>
-    line(current.getStart(file)) - line(previous.getEnd()) > 1;
+  const blankBefore = (previous: ts.Node, current: ts.Node): boolean => {
+    const gap = source.slice(previous.getEnd(), current.getStart(file));
+    const scanner = ts.createScanner(
+      ts.ScriptTarget.Latest,
+      false,
+      ts.LanguageVariant.Standard,
+      gap,
+    );
+    const visible = gap.split("");
+    for (
+      let token = scanner.scan();
+      token !== ts.SyntaxKind.EndOfFileToken;
+      token = scanner.scan()
+    ) {
+      if (
+        token === ts.SyntaxKind.SingleLineCommentTrivia ||
+        token === ts.SyntaxKind.MultiLineCommentTrivia
+      ) {
+        visible.fill("#", scanner.getTokenPos(), scanner.getTextPos());
+      }
+    }
+    return /(?:\r\n|\r|\n)[ \t]*(?=\r\n|\r|\n)/.test(visible.join(""));
+  };
   const literal = (node: ts.Expression | undefined): boolean =>
     !!node &&
     (ts.isLiteralExpression(node) ||
