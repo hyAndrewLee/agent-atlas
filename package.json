@@ -10,9 +10,9 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint src/ test/",
-    "format": "oxfmt src/ test/",
-    "format:check": "oxfmt --check src/ test/"
+    "lint": "oxlint src/ test/ scripts/ && bun run scripts/check-style.ts",
+    "format": "oxfmt src/ test/ scripts/",
+    "format:check": "oxfmt --check src/ test/ scripts/"
   },
   "dependencies": {
     "typescript": "5.9.3"
