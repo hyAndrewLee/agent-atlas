@@ -3,10 +3,26 @@
   "version": "0.1.0",
   "description": "Explicit-domain repository navigation and dependency context for Pi",
   "type": "module",
-  "bin": { "agent-atlas": "src/cli.ts" },
+  "bin": {
+    "agent-atlas": "src/cli.ts"
+  },
   "files": ["src", "README.md", "tsconfig.json"],
-  "scripts": { "test": "bun test", "typecheck": "tsc --noEmit" },
-  "dependencies": { "typescript": "5.9.3" },
-  "devDependencies": { "@types/bun": "1.3.2" },
-  "engines": { "bun": ">=1.2.23" }
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src/ test/ scripts/ && bun run scripts/check-style.ts",
+    "format": "oxfmt src/ test/ scripts/",
+    "format:check": "oxfmt --check src/ test/ scripts/"
+  },
+  "dependencies": {
+    "typescript": "5.9.3"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.2",
+    "oxfmt": "0.79.0",
+    "oxlint": "1.94.0"
+  },
+  "engines": {
+    "bun": ">=1.2.23"
+  }
 }

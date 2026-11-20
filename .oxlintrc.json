@@ -1,0 +1,6 @@
+{
+  "rules": {
+    "curly": ["error", "all"],
+    "one-var": ["error", "never"]
+  }
+}
